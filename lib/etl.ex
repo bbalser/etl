@@ -12,10 +12,15 @@ defmodule Etl do
   def run(opts) do
     source = Keyword.fetch!(opts, :source)
     destination = Keyword.fetch!(opts, :destination)
-    _dictionary = Keyword.fetch!(opts, :dictionary)
-    _transformations = Keyword.get(opts, :transformations, [])
+    # _dictionary = Keyword.fetch!(opts, :dictionary)
+    # _transformations = Keyword.get(opts, :transformations, [])
 
-    stages = Etl.Source.stages(source, %Etl.Context{}) ++ Etl.Destination.stages(destination, %Etl.Context{})
+    context = %Etl.Context{
+      min_demand: Keyword.get(opts, :min_demand, 500),
+      max_demand: Keyword.get(opts, :max_demand, 1000)
+    }
+
+    stages = Etl.Source.stages(source, context) ++ Etl.Destination.stages(destination, context)
 
     pids =
       stages
@@ -25,7 +30,13 @@ defmodule Etl do
     subscriptions =
       pids
       |> Enum.chunk_every(2, 1, :discard)
-      |> Enum.map(fn [a, b] -> GenStage.sync_subscribe(b, to: a) end)
+      |> Enum.map(fn [a, b] ->
+        GenStage.sync_subscribe(b,
+          to: a,
+          max_demand: context.max_demand,
+          min_demand: context.min_demand
+        )
+      end)
       |> Enum.map(fn {:ok, sub} -> sub end)
 
     %__MODULE__{
@@ -38,11 +49,30 @@ defmodule Etl do
   end
 
   @spec await(%__MODULE__{}) :: :ok | :timeout
-  def await(%__MODULE__{} = _etl) do
+  def await(%__MODULE__{} = etl, opts \\ []) do
+    delay = Keyword.get(opts, :delay, 500)
+    timeout = Keyword.get(opts, :timeout, 10_000)
+
+    do_await(etl, delay, timeout, 0)
   end
 
   @spec done?(%__MODULE__{}) :: boolean()
-  def done?(%__MODULE__{} = _etl) do
+  def done?(%__MODULE__{} = etl) do
+    Enum.all?(etl.pids, fn pid -> Process.alive?(pid) == false end)
   end
 
+  defp do_await(_etl, _delay, timeout, elapsed) when elapsed >= timeout do
+    :timeout
+  end
+
+  defp do_await(etl, delay, timeout, elapsed) do
+    case done?(etl) do
+      true ->
+        :ok
+
+      false ->
+        Process.sleep(delay)
+        do_await(etl, delay, timeout, elapsed + delay)
+    end
+  end
 end
