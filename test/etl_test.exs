@@ -4,6 +4,9 @@ defmodule EtlTest do
   test "etl can run a source to a destination" do
     %{pids: [producer | _]} = etl = Etl.run(
       source: %Etl.TestSource{},
+      transformations: [
+        %Etl.Test.Transform.Upcase{}
+      ],
       destination: %Etl.TestDestination{pid: self()}
     )
 
@@ -15,7 +18,8 @@ defmodule EtlTest do
     :ok = Etl.await(etl, delay: 100, timeout: 5_000)
 
     Enum.each(events, fn event ->
-      assert_received {:event, ^event}
+      transformed_event = String.upcase(event)
+      assert_received {:event, ^transformed_event}
     end)
 
   end

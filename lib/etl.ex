@@ -13,14 +13,17 @@ defmodule Etl do
     source = Keyword.fetch!(opts, :source)
     destination = Keyword.fetch!(opts, :destination)
     # _dictionary = Keyword.fetch!(opts, :dictionary)
-    # _transformations = Keyword.get(opts, :transformations, [])
+    transformations = Keyword.get(opts, :transformations, [])
 
     context = %Etl.Context{
       min_demand: Keyword.get(opts, :min_demand, 500),
       max_demand: Keyword.get(opts, :max_demand, 1000)
     }
 
-    stages = Etl.Source.stages(source, context) ++ Etl.Destination.stages(destination, context)
+    stages =
+      Etl.Source.stages(source, context) ++
+        transformation_stages(transformations, context) ++
+        Etl.Destination.stages(destination, context)
 
     pids =
       stages
@@ -59,6 +62,12 @@ defmodule Etl do
   @spec done?(%__MODULE__{}) :: boolean()
   def done?(%__MODULE__{} = etl) do
     Enum.all?(etl.pids, fn pid -> Process.alive?(pid) == false end)
+  end
+
+  defp transformation_stages(transformations, context) do
+    functions = Enum.map(transformations, &Etl.Transformation.function(&1, context))
+
+    [{Etl.Transform.Stage, functions: functions}]
   end
 
   defp do_await(_etl, _delay, timeout, elapsed) when elapsed >= timeout do

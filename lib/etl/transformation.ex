@@ -5,7 +5,7 @@ defprotocol Etl.Transformation do
   @spec stages(t, Etl.Context.t()) :: [Etl.stage()]
   def stages(t, context)
 
-  @spec function(t, Etl.Context.t()) :: (map() -> {:ok, map()} | {:error, reason :: term()})
+  @spec function(t, Etl.Context.t()) :: (term() -> {:ok, term()} | {:error, reason :: term()})
   def function(t, context)
 
   @spec dictionary(Etl.Dictionary.t()) :: {:ok, Etl.Dictionary.t()} | {:error, reason :: term()}
