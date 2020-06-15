@@ -22,6 +22,7 @@ defmodule Etl.MixProject do
   defp deps do
     [
       {:gen_stage, "~> 1.0"},
+      {:brex_result, "~> 0.4.0"},
       {:placebo, "~> 1.2", only: [:dev, :test]},
       {:checkov, "~> 1.0", only: [:dev, :test]}
     ]

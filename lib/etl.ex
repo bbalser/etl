@@ -15,7 +15,7 @@ defmodule Etl do
     _dictionary = Keyword.fetch!(opts, :dictionary)
     _transformations = Keyword.get(opts, :transformations, [])
 
-    stages = Etl.Source.stages(source) ++ Etl.Destination.stages(destination)
+    stages = Etl.Source.stages(source, %Etl.Context{}) ++ Etl.Destination.stages(destination, %Etl.Context{})
 
     pids =
       stages
@@ -38,11 +38,11 @@ defmodule Etl do
   end
 
   @spec await(%__MODULE__{}) :: :ok | :timeout
-  def await(%__MODULE__{} = etl) do
+  def await(%__MODULE__{} = _etl) do
   end
 
   @spec done?(%__MODULE__{}) :: boolean()
-  def done?(%__MODULE__{} = etl) do
+  def done?(%__MODULE__{} = _etl) do
   end
 
 end
