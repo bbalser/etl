@@ -25,22 +25,8 @@ defmodule Etl do
         transformation_stages(transformations, context) ++
         Etl.Destination.stages(destination, context)
 
-    pids =
-      stages
-      |> Enum.map(&DynamicSupervisor.start_child(Etl.DynamicSupervisor, &1))
-      |> Enum.map(fn {:ok, pid} -> pid end)
-
-    subscriptions =
-      pids
-      |> Enum.chunk_every(2, 1, :discard)
-      |> Enum.map(fn [a, b] ->
-        GenStage.sync_subscribe(b,
-          to: a,
-          max_demand: context.max_demand,
-          min_demand: context.min_demand
-        )
-      end)
-      |> Enum.map(fn {:ok, sub} -> sub end)
+    pids = start_stages(stages)
+    subscriptions = setup_pipeline(pids, context)
 
     %__MODULE__{
       source: source,
@@ -64,9 +50,46 @@ defmodule Etl do
     Enum.all?(etl.pids, fn pid -> Process.alive?(pid) == false end)
   end
 
-  defp transformation_stages(transformations, context) do
-    functions = Enum.map(transformations, &Etl.Transformation.function(&1, context))
+  defp start_stages(stages) do
+    stages
+    |> Enum.map(&DynamicSupervisor.start_child(Etl.DynamicSupervisor, &1))
+    |> Enum.map(fn {:ok, pid} -> pid end)
+  end
 
+  defp setup_pipeline(pids, context) do
+    pids
+    |> Enum.chunk_every(2, 1, :discard)
+    |> Enum.map(fn [a, b] ->
+      GenStage.sync_subscribe(b,
+        to: a,
+        max_demand: context.max_demand,
+        min_demand: context.min_demand
+      )
+    end)
+    |> Enum.map(fn {:ok, sub} -> sub end)
+  end
+
+  defp transformation_stages(transformations, context) do
+    transformations
+    |> Enum.map(fn transformation ->
+      {Etl.Transformation.stage_or_function(transformation), transformation}
+    end)
+    |> Enum.chunk_by(fn {type, _} -> type end)
+    |> Enum.map(fn
+      [{:function, _} | _] = chunk ->
+        transformations = Enum.map(chunk, fn {_type, transformation} -> transformation end)
+        create_transformation_function_stage(transformations, context)
+
+      [{:stage, _} | _] = chunk ->
+        Enum.reduce(chunk, [], fn {_type, transformation}, buffer ->
+          buffer ++ Etl.Transformation.stages(transformation, context)
+        end)
+    end)
+    |> List.flatten()
+  end
+
+  defp create_transformation_function_stage(transformations, context) do
+    functions = Enum.map(transformations, &Etl.Transformation.function(&1, context))
     [{Etl.Transform.Stage, functions: functions}]
   end
 

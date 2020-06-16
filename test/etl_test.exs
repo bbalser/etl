@@ -24,4 +24,25 @@ defmodule EtlTest do
 
   end
 
+  test "etl can support transformations that are stages" do
+    %{pids: [producer | _]} = etl = Etl.run(
+      source: %Etl.TestSource{},
+      transformations: [
+        %Etl.Test.Transform.Custom{function: fn x -> x * 2 end},
+        %Etl.Test.Transform.Custom{function: fn x -> x + 1 end},
+        %Etl.Test.Transform.Sum{},
+        %Etl.Test.Transform.Custom{function: fn x -> x - 1 end}
+      ],
+      destination: %Etl.TestDestination{pid: self()}
+    )
+
+    Etl.TestSource.send_events(producer, [1,2,3,4,5])
+    Etl.TestSource.send_events(producer, [6,7,8,9,10])
+    Etl.TestSource.stop(producer)
+
+    :ok = Etl.await(etl, delay: 100, timeout: 5_000)
+
+    assert_received {:event, 119}
+  end
+
 end
