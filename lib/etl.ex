@@ -2,6 +2,15 @@ defmodule Etl do
   @type stage :: Supervisor.child_spec() | {module(), arg :: term()} | module()
   @type dictionary :: term()
 
+  @type t :: %__MODULE__{
+    source: Etl.Source.t(),
+    destination: Etl.Destination.t(),
+    transformations: [Etl.Transformation.t()],
+    stages: [Etl.stage()],
+    pids: [pid],
+    subscriptions: [GenStage.subscription_tag()]
+  }
+
   defstruct source: nil,
             destination: nil,
             transformations: [],
@@ -9,6 +18,7 @@ defmodule Etl do
             pids: [],
             subscriptions: []
 
+  @spec run(keyword) :: t
   def run(opts) do
     source = Keyword.fetch!(opts, :source)
     destination = Keyword.fetch!(opts, :destination)
@@ -16,6 +26,7 @@ defmodule Etl do
     transformations = Keyword.get(opts, :transformations, [])
 
     context = %Etl.Context{
+      dictionary: %Etl.Dictionary{types: []},
       min_demand: Keyword.get(opts, :min_demand, 500),
       max_demand: Keyword.get(opts, :max_demand, 1000)
     }
@@ -37,7 +48,7 @@ defmodule Etl do
     }
   end
 
-  @spec await(%__MODULE__{}) :: :ok | :timeout
+  @spec await(t) :: :ok | :timeout
   def await(%__MODULE__{} = etl, opts \\ []) do
     delay = Keyword.get(opts, :delay, 500)
     timeout = Keyword.get(opts, :timeout, 10_000)
@@ -45,7 +56,7 @@ defmodule Etl do
     do_await(etl, delay, timeout, 0)
   end
 
-  @spec done?(%__MODULE__{}) :: boolean()
+  @spec done?(t) :: boolean()
   def done?(%__MODULE__{} = etl) do
     Enum.all?(etl.pids, fn pid -> Process.alive?(pid) == false end)
   end
@@ -77,8 +88,8 @@ defmodule Etl do
     |> Enum.chunk_by(fn {type, _} -> type end)
     |> Enum.map(fn
       [{:function, _} | _] = chunk ->
-        transformations = Enum.map(chunk, fn {_type, transformation} -> transformation end)
-        create_transformation_function_stage(transformations, context)
+        Enum.map(chunk, fn {_type, transformation} -> transformation end)
+        |> create_transformation_function_stage(context)
 
       [{:stage, _} | _] = chunk ->
         Enum.reduce(chunk, [], fn {_type, transformation}, buffer ->

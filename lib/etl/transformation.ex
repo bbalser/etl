@@ -20,7 +20,7 @@ defmodule Etl.Transformation.Stage do
       end
 
       def function(_t, _context) do
-        fn x -> x end
+        fn x -> {:ok, x} end
       end
 
       def dictionary(dictionary) do
