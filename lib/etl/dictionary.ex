@@ -4,4 +4,9 @@ defmodule Etl.Dictionary do
         }
 
   defstruct types: []
+
+  @spec normalize(t, map()) :: {:ok, map()} | {:error, reason::term()}
+  def normalize(dictionary, map) do
+    Etl.Type.normalize(%Etl.Type.Map{dictionary: dictionary}, map)
+  end
 end
