@@ -33,7 +33,7 @@ defmodule Etl do
   def run(opts) do
     source = Keyword.fetch!(opts, :source)
     destination = Keyword.fetch!(opts, :destination)
-    dictionary = Keyword.fetch!(opts, :dictionary)
+    dictionary = Keyword.get(opts, :dictionary)
     transformations = Keyword.get(opts, :transformations, [])
 
     error_handler =

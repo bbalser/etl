@@ -22,7 +22,7 @@ defmodule EtlTest do
 
     Enum.each(events, fn event ->
       transformed_event = String.upcase(event)
-      assert_received {:event, ^transformed_event}
+      assert_receive {:event, ^transformed_event}, 1_000
     end)
   end
 
