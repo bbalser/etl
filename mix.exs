@@ -1,18 +1,19 @@
 defmodule Etl.MixProject do
   use Mix.Project
 
+  @version "0.1.0"
   @github "https://github.com/inhindsight/etl"
+  @description "Declarative definition of Extract/Transform/Load pipelines"
 
   def project do
     [
       app: :etl,
-      version: "0.1.0",
+      version: @version,
       elixir: "~> 1.9",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
-      description: description(),
+      description: @description,
       package: package(),
-      source_url: @github,
       homepage: @github,
       docs: docs(),
       elixirc_paths: elixirc_paths(Mix.env()),
@@ -52,13 +53,10 @@ defmodule Etl.MixProject do
 
   defp docs do
     [
+      source_ref: "v#{@version}",
       source_url: @github,
       extras: ["README.md"],
       source_url_pattern: "#{@github}/blob/master/%{path}#L%{line}"
     ]
-  end
-
-  defp description do
-    "Declarative definition of Extract/Transform/Load pipelines"
   end
 end
