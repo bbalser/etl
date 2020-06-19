@@ -32,6 +32,7 @@ defmodule Etl.MixProject do
     [
       {:gen_stage, "~> 1.0"},
       {:brex_result, "~> 0.4.0"},
+      {:telemetry, "~> 0.4.0"},
       {:timex, "~> 3.6"},
       {:dialyxir, "~> 1.0.0-rc.7", only: [:dev], runtime: false},
       {:ex_doc, "~> 0.22.1", only: [:dev]},
