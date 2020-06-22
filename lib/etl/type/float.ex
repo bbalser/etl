@@ -1,10 +1,9 @@
 defmodule Etl.Type.Float do
-
   @type t :: %__MODULE__{
-    name: String.t(),
-    description: String.t(),
-    nils: boolean()
-  }
+          name: String.t(),
+          description: String.t(),
+          nils: boolean()
+        }
 
   defstruct name: nil, description: nil, nils: true
 

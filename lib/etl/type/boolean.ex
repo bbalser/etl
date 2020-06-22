@@ -1,15 +1,15 @@
 defmodule Etl.Type.Boolean do
-
   @type t :: %__MODULE__{
-    name: String.t(),
-    description: String.t(),
-    nils: boolean()
-  }
+          name: String.t(),
+          description: String.t(),
+          nils: boolean()
+        }
 
   defstruct name: nil, description: nil, nils: false
 
   defimpl Etl.Type do
     import Brex.Result.Base, only: [ok: 1, error: 1]
+
     def name(%{name: name}) do
       name
     end

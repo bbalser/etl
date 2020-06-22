@@ -4,13 +4,13 @@ defmodule Etl do
   @type dictionary :: term()
 
   @type t :: %__MODULE__{
-    source: Etl.Source.t(),
-    destination: Etl.Destination.t(),
-    transformations: [Etl.Transformation.t()],
-    stages: [Etl.stage()],
-    pids: [pid],
-    subscriptions: [GenStage.subscription_tag()]
-  }
+          source: Etl.Source.t(),
+          destination: Etl.Destination.t(),
+          transformations: [Etl.Transformation.t()],
+          stages: [Etl.stage()],
+          pids: [pid],
+          subscriptions: [GenStage.subscription_tag()]
+        }
 
   defstruct source: nil,
             destination: nil,
@@ -53,7 +53,7 @@ defmodule Etl do
     source_stages =
       Etl.Source.stages(source, context)
       |> Enum.map(&intercept/1)
-      |> IO.inspect
+      |> IO.inspect()
 
     stages =
       source_stages ++

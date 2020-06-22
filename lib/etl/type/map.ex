@@ -1,11 +1,10 @@
 defmodule Etl.Type.Map do
-
   @type t :: %__MODULE__{
-    name: String.t(),
-    description: String.t(),
-    dictionary: Etl.Dictionary.t(),
-    nils: boolean()
-  }
+          name: String.t(),
+          description: String.t(),
+          dictionary: Etl.Dictionary.t(),
+          nils: boolean()
+        }
 
   defstruct name: nil, description: nil, dictionary: nil, nils: true
 

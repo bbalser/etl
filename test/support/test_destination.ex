@@ -1,5 +1,4 @@
 defmodule Etl.TestDestination do
-
   defstruct [:pid]
 
   defimpl Etl.Destination do
