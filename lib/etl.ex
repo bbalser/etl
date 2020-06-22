@@ -143,11 +143,11 @@ defmodule Etl do
     end
   end
 
-  defp intercept(module) do
-    {Etl.Stage.Interceptor, stage: module}
-  end
-
   defp intercept({module, args}) do
     {Etl.Stage.Interceptor, stage: module, args: args}
+  end
+
+  defp intercept(module) do
+    {Etl.Stage.Interceptor, stage: module}
   end
 end
