@@ -23,6 +23,7 @@ defmodule Etl.MixProject do
     [
       {:gen_stage, "~> 1.0"},
       {:brex_result, "~> 0.4.0"},
+      {:timex, "~> 3.6"},
       {:dialyxir, "~> 1.0.0-rc.7", only: [:dev], runtime: false},
       {:placebo, "~> 1.2", only: [:dev, :test]},
       {:checkov, "~> 1.0", only: [:dev, :test]}
