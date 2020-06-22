@@ -46,6 +46,6 @@ defmodule EtlTest do
 
     :ok = Etl.await(etl, delay: 100, timeout: 5_000)
 
-    assert_received {:event, 119}
+    assert_receive {:event, 119}, 1_000
   end
 end

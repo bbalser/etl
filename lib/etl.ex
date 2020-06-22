@@ -50,8 +50,13 @@ defmodule Etl do
       error_handler: error_handler
     }
 
+    source_stages =
+      Etl.Source.stages(source, context)
+      |> Enum.map(&intercept/1)
+      |> IO.inspect
+
     stages =
-      Etl.Source.stages(source, context) ++
+      source_stages ++
         transformation_stages(transformations, context) ++
         Etl.Destination.stages(destination, context)
 
@@ -136,5 +141,13 @@ defmodule Etl do
         Process.sleep(delay)
         do_await(etl, delay, timeout, elapsed + delay)
     end
+  end
+
+  defp intercept(module) do
+    {Etl.Stage.Interceptor, stage: module}
+  end
+
+  defp intercept({module, args}) do
+    {Etl.Stage.Interceptor, stage: module, args: args}
   end
 end
