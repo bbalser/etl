@@ -9,10 +9,14 @@ defmodule Etl.Stage.Interceptor do
 
   def init(opts) do
     stage = Keyword.fetch!(opts, :stage)
+    pre_emit = Keyword.get(opts, :pre_emit, fn x -> x end)
+    post_emit = Keyword.get(opts, :post_emit, fn x -> x end)
     args = Keyword.get(opts, :args, [])
 
+    config = %{stage: stage, state: %{}, post_emit: post_emit, pre_emit: pre_emit}
+
     stage.init(args)
-    |> wrap_response(stage)
+    |> wrap_response(config)
   end
 
   def terminate(reason, %{stage: stage, state: state}) do
@@ -25,100 +29,107 @@ defmodule Etl.Stage.Interceptor do
     end
   end
 
-  def handle_call(request, from, %{stage: stage, state: state}) do
+  def handle_call(request, from, %{stage: stage, state: state} = config) do
     stage.handle_call(request, from, state)
-    |> wrap_response(stage)
+    |> wrap_response(config)
   end
 
-  def handle_cast(request, %{stage: stage, state: state}) do
+  def handle_cast(request, %{stage: stage, state: state} = config) do
     stage.handle_cast(request, state)
-    |> wrap_response(stage)
+    |> wrap_response(config)
   end
 
-  def handle_info(request, %{stage: stage, state: state}) do
+  def handle_info(request, %{stage: stage, state: state} = config) do
     stage.handle_info(request, state)
-    |> wrap_response(stage)
+    |> wrap_response(config)
   end
 
-  def handle_subscribe(producer_or_consumer, subscription_options, from, %{
-        stage: stage,
-        state: state
-      }) do
+  def handle_subscribe(
+        producer_or_consumer,
+        subscription_options,
+        from,
+        %{
+          stage: stage,
+          state: state
+        } = config
+      ) do
     case function_exported?(stage, :handle_subscribe, 4) do
       true ->
         case stage.handle_subscribe(producer_or_consumer, subscription_options, from, state) do
-          {:automatic, state} -> {:automatic, wrap_state(stage, state)}
-          {:manual, state} -> {:manual, wrap_state(stage, state)}
-          {:stop, reason, state} -> {:stop, reason, wrap_state(stage, state)}
+          {:automatic, state} -> {:automatic, %{config | state: state}}
+          {:manual, state} -> {:manual, %{config | state: state}}
+          {:stop, reason, state} -> {:stop, reason, %{config | state: state}}
         end
 
       false ->
-        {:automatic, %{stage: stage, state: state}}
+        {:automatic, config}
     end
   end
 
-  def handle_cancel(reason, from, %{stage: stage, state: state}) do
+  def handle_cancel(reason, from, %{stage: stage, state: state} = config) do
     case function_exported?(stage, :handle_cancel, 3) do
       true ->
         stage.handle_cancel(reason, from, state)
-        |> wrap_response(stage)
+        |> wrap_response(config)
 
       false ->
-        {:noreply, [], wrap_state(stage, state)}
+        {:noreply, [], config}
     end
   end
 
-  def handle_demand(demand, %{stage: stage, state: state}) do
+  def handle_demand(demand, %{stage: stage, state: state} = config) do
     stage.handle_demand(demand, state)
-    |> wrap_response(stage)
+    |> wrap_response(config)
   end
 
-  def handle_events(events, from, %{stage: stage, state: state}) do
+  def handle_events(events, from, %{stage: stage, state: state} = config) do
+    config.pre_emit.(events)
+
     stage.handle_events(events, from, state)
-    |> wrap_response(stage)
+    |> wrap_response(config)
   end
 
-  defp wrap_response({:noreply, events, state}, stage) do
-    {:noreply, events, wrap_state(stage, state)}
+  defp wrap_response({:noreply, events, state}, config) do
+    config.post_emit.(events)
+    {:noreply, events, %{config | state: state}}
   end
 
-  defp wrap_response({:noreply, events, state, opts}, stage) do
-    {:noreply, events, wrap_state(stage, state), opts}
+  defp wrap_response({:noreply, events, state, opts}, config) do
+    config.post_emit.(events)
+    {:noreply, events, %{config | state: state}, opts}
   end
 
-  defp wrap_response({:reply, reply, events, state}, stage) do
-    {:reply, reply, events, wrap_state(stage, state)}
+  defp wrap_response({:reply, reply, events, state}, config) do
+    config.post_emit.(events)
+    {:reply, reply, events, %{config | state: state}}
   end
 
-  defp wrap_response({:reply, reply, events, state, opts}, stage) do
-    {:reply, reply, events, wrap_state(stage, state), opts}
+  defp wrap_response({:reply, reply, events, state, opts}, config) do
+    config.post_emit.(events)
+    {:reply, reply, events, %{config | state: state}, opts}
   end
 
-  defp wrap_response({:stop, reason, reply, state}, stage) do
-    {:stop, reason, reply, wrap_state(stage, state)}
+  defp wrap_response({:stop, reason, reply, state}, config) do
+    {:stop, reason, reply, %{config | state: state}}
   end
 
-  defp wrap_response({:stop, reason, state}, stage) do
-    {:stop, reason, wrap_state(stage, state)}
+  defp wrap_response({:stop, reason, state}, config) do
+    {:stop, reason, %{config | state: state}}
   end
 
-  defp wrap_response({:stop, reason}, _stage) do
+  defp wrap_response({:stop, reason}, _config) do
     {:stop, reason}
   end
 
-  defp wrap_response({type, state}, stage) when type in @types do
-    {type, wrap_state(stage, state)}
+  defp wrap_response({type, state}, config) when type in @types do
+    {type, %{config | state: state}}
   end
 
-  defp wrap_response({type, state, opts}, stage) when type in @types do
-    {type, wrap_state(stage, state), opts}
+  defp wrap_response({type, state, opts}, config) when type in @types do
+    {type, %{config | state: state}, opts}
   end
 
   defp wrap_response(response, _stage) do
     response
-  end
-
-  defp wrap_state(stage, state) do
-    %{stage: stage, state: state}
   end
 end
