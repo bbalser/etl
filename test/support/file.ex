@@ -1,8 +1,7 @@
 defmodule Test.File do
-
   @type t :: %__MODULE__{
-    path: String.t()
-  }
+          path: String.t()
+        }
 
   defstruct path: nil
 

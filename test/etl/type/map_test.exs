@@ -31,7 +31,7 @@ defmodule Etl.Type.MapTest do
           %Etl.Type.String{name: "name"},
           %Etl.Type.Integer{name: "age"}
         ]
-}
+      }
     }
 
     data = %{

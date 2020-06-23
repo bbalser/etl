@@ -4,13 +4,13 @@ defmodule Etl do
   @type dictionary :: term()
 
   @type t :: %__MODULE__{
-    source: Etl.Source.t(),
-    destination: Etl.Destination.t(),
-    transformations: [Etl.Transformation.t()],
-    stages: [Etl.stage()],
-    pids: [pid],
-    subscriptions: [GenStage.subscription_tag()]
-  }
+          source: Etl.Source.t(),
+          destination: Etl.Destination.t(),
+          transformations: [Etl.Transformation.t()],
+          stages: [Etl.stage()],
+          pids: [pid],
+          subscriptions: [GenStage.subscription_tag()]
+        }
 
   defstruct source: nil,
             destination: nil,
@@ -149,5 +149,4 @@ defmodule Etl do
   defp intercept(module) do
     {Etl.Stage.Interceptor, stage: module}
   end
-
 end

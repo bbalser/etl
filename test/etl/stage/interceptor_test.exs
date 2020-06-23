@@ -27,7 +27,7 @@ defmodule Etl.Stage.InterceptorTest do
     GenStage.sync_subscribe(consumer, to: interceptor)
     GenStage.sync_subscribe(interceptor, to: producer)
 
-    Etl.TestSource.send_events(producer, [1,2,3])
+    Etl.TestSource.send_events(producer, [1, 2, 3])
 
     assert_receive {:event, 2}
     assert_receive {:event, 4}
@@ -36,6 +36,7 @@ defmodule Etl.Stage.InterceptorTest do
 
   test "interceptor will send events to post emit handler" do
     test = self()
+
     post_emit = fn events ->
       Enum.each(events, &send(test, {:post_emit, &1}))
     end
@@ -47,7 +48,7 @@ defmodule Etl.Stage.InterceptorTest do
     GenStage.sync_subscribe(consumer, to: interceptor)
     GenStage.sync_subscribe(interceptor, to: producer)
 
-    Etl.TestSource.send_events(producer, [1,2,3])
+    Etl.TestSource.send_events(producer, [1, 2, 3])
 
     assert_receive {:event, 2}
     assert_receive {:event, 4}
@@ -60,6 +61,7 @@ defmodule Etl.Stage.InterceptorTest do
 
   test "interceptor will send event to pre emit handler" do
     test = self()
+
     pre_emit = fn events ->
       Enum.each(events, &send(test, {:pre_emit, &1}))
     end
@@ -71,7 +73,7 @@ defmodule Etl.Stage.InterceptorTest do
     GenStage.sync_subscribe(consumer, to: interceptor)
     GenStage.sync_subscribe(interceptor, to: producer)
 
-    Etl.TestSource.send_events(producer, [1,2,3])
+    Etl.TestSource.send_events(producer, [1, 2, 3])
 
     assert_receive {:pre_emit, 1}
     assert_receive {:pre_emit, 2}

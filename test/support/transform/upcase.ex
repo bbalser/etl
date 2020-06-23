@@ -1,5 +1,4 @@
 defmodule Etl.Test.Transform.Upcase do
-
   defstruct []
 
   defimpl Etl.Transformation do

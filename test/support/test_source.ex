@@ -1,5 +1,4 @@
 defmodule Etl.TestSource do
-
   defstruct []
 
   defimpl Etl.Source do

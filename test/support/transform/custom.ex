@@ -1,6 +1,5 @@
 defmodule Etl.Test.Transform.Custom do
-
-  defstruct [function: nil]
+  defstruct function: nil
 
   defimpl Etl.Transformation do
     use Etl.Transformation.Function

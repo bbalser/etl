@@ -1,11 +1,11 @@
 defmodule Etl.Type.Timestamp do
   @type t :: %__MODULE__{
-    name: String.t(),
-    description: String.t(),
-    nils: boolean(),
-    format: String.t(),
-    timezone: String.t()
-  }
+          name: String.t(),
+          description: String.t(),
+          nils: boolean(),
+          format: String.t(),
+          timezone: String.t()
+        }
   defstruct name: nil, description: nil, nils: true, format: "%FT%T.%f", timezone: "Etc/UTC"
 
   defimpl Etl.Type do
