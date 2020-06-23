@@ -20,8 +20,7 @@ defmodule Etl.Transform.StageTest do
 
     producer = start_supervised!(Etl.TestSource.Stage)
 
-    function_stage =
-      start_supervised!({Etl.Transform.Stage, context: context, functions: functions})
+    function_stage = start_supervised!({Etl.Transform.Stage, context: context, functions: functions})
 
     consumer = start_supervised!({Etl.TestDestination.Stage, %Etl.TestDestination{pid: test}})
 

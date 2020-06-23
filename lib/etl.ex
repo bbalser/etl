@@ -149,5 +149,4 @@ defmodule Etl do
   defp intercept(module) do
     {Etl.Stage.Interceptor, stage: module}
   end
-
 end
