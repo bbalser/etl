@@ -53,7 +53,6 @@ defmodule Etl do
     source_stages =
       Etl.Source.stages(source, context)
       |> Enum.map(&intercept/1)
-      |> IO.inspect()
 
     stages =
       source_stages ++
@@ -150,4 +149,5 @@ defmodule Etl do
   defp intercept(module) do
     {Etl.Stage.Interceptor, stage: module}
   end
+
 end
