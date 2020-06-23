@@ -84,6 +84,26 @@ defmodule Etl do
     Enum.all?(etl.pids, fn pid -> Process.alive?(pid) == false end)
   end
 
+  @spec ack([Etl.Message.t()]) :: :ok
+  def ack(messages) do
+    Enum.group_by(messages, fn %{acknowledger: {mod, ref, _data}} -> {mod, ref} end)
+    |> Enum.map(&group_by_status/1)
+    |> Enum.each(fn {{mod, ref}, pass, fail} -> mod.ack(ref, pass, fail) end)
+  end
+
+  defp group_by_status({key, messages}) do
+    {pass, fail} =
+      Enum.reduce(messages, {[], []}, fn
+        %{status: :ok} = msg, {pass, fail} ->
+          {[msg | pass], fail}
+
+        msg, {pass, fail} ->
+          {pass, [msg | fail]}
+      end)
+
+    {key, Enum.reverse(pass), Enum.reverse(fail)}
+  end
+
   defp start_stages(stages) do
     stages
     |> Enum.map(&DynamicSupervisor.start_child(Etl.DynamicSupervisor, &1))
