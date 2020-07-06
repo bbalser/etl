@@ -34,15 +34,14 @@ defmodule Etl.Stage.InterceptorTest do
     assert_receive {:event, 6}
   end
 
-  test "interceptor will send events to post emit handler" do
+  test "interceptor will send events to post process handler" do
     test = self()
-
-    post_emit = fn events ->
-      Enum.each(events, &send(test, {:post_emit, &1}))
+    post_process = fn events ->
+      Enum.each(events, &send(test, {:post_process, &1}))
     end
 
     producer = start_supervised!(Etl.TestSource.Stage)
-    interceptor = start_supervised!({Etl.Stage.Interceptor, stage: Stage, post_emit: post_emit})
+    interceptor = start_supervised!({Etl.Stage.Interceptor, stage: Stage, post_process: post_process})
     consumer = start_supervised!({Etl.TestDestination.Stage, %{pid: self()}})
 
     GenStage.sync_subscribe(consumer, to: interceptor)
@@ -54,20 +53,19 @@ defmodule Etl.Stage.InterceptorTest do
     assert_receive {:event, 4}
     assert_receive {:event, 6}
 
-    assert_receive {:post_emit, 2}
-    assert_receive {:post_emit, 4}
-    assert_receive {:post_emit, 6}
+    assert_receive {:post_process, 2}
+    assert_receive {:post_process, 4}
+    assert_receive {:post_process, 6}
   end
 
-  test "interceptor will send event to pre emit handler" do
+  test "interceptor will send event to pre process handler" do
     test = self()
-
-    pre_emit = fn events ->
-      Enum.each(events, &send(test, {:pre_emit, &1}))
+    pre_process = fn events ->
+      Enum.each(events, &send(test, {:pre_process, &1}))
     end
 
     producer = start_supervised!(Etl.TestSource.Stage)
-    interceptor = start_supervised!({Etl.Stage.Interceptor, stage: Stage, pre_emit: pre_emit})
+    interceptor = start_supervised!({Etl.Stage.Interceptor, stage: Stage, pre_process: pre_process})
     consumer = start_supervised!({Etl.TestDestination.Stage, %{pid: self()}})
 
     GenStage.sync_subscribe(consumer, to: interceptor)
@@ -75,9 +73,9 @@ defmodule Etl.Stage.InterceptorTest do
 
     Etl.TestSource.send_events(producer, [1, 2, 3])
 
-    assert_receive {:pre_emit, 1}
-    assert_receive {:pre_emit, 2}
-    assert_receive {:pre_emit, 3}
+    assert_receive {:pre_process, 1}
+    assert_receive {:pre_process, 2}
+    assert_receive {:pre_process, 3}
 
     assert_receive {:event, 2}
     assert_receive {:event, 4}

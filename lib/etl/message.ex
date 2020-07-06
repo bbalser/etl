@@ -12,8 +12,7 @@ defmodule Etl.Message do
             metadata: %{}
 
   @spec update_data(t, (current :: term() -> new :: term())) :: t
-  def update_data(%__MODULE__{data: data} = message, update_function)
-      when is_function(update_function, 1) do
+  def update_data(%__MODULE__{data: data} = message, update_function) when is_function(update_function, 1) do
     %Etl.Message{message | data: update_function.(data)}
   end
 

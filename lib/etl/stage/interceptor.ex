@@ -9,11 +9,11 @@ defmodule Etl.Stage.Interceptor do
 
   def init(opts) do
     stage = Keyword.fetch!(opts, :stage)
-    pre_emit = Keyword.get(opts, :pre_emit, fn x -> x end)
-    post_emit = Keyword.get(opts, :post_emit, fn x -> x end)
+    pre_process = Keyword.get(opts, :pre_process, fn x -> x end)
+    post_process = Keyword.get(opts, :post_process, fn x -> x end)
     args = Keyword.get(opts, :args, [])
 
-    config = %{stage: stage, state: %{}, post_emit: post_emit, pre_emit: pre_emit}
+    config = %{stage: stage, state: %{}, post_process: post_process, pre_process: pre_process}
 
     stage.init(args)
     |> wrap_response(config)
@@ -83,29 +83,29 @@ defmodule Etl.Stage.Interceptor do
   end
 
   def handle_events(events, from, %{stage: stage, state: state} = config) do
-    config.pre_emit.(events)
+    config.pre_process.(events)
 
     stage.handle_events(events, from, state)
     |> wrap_response(config)
   end
 
   defp wrap_response({:noreply, events, state}, config) do
-    config.post_emit.(events)
+    config.post_process.(events)
     {:noreply, events, %{config | state: state}}
   end
 
   defp wrap_response({:noreply, events, state, opts}, config) do
-    config.post_emit.(events)
+    config.post_process.(events)
     {:noreply, events, %{config | state: state}, opts}
   end
 
   defp wrap_response({:reply, reply, events, state}, config) do
-    config.post_emit.(events)
+    config.post_process.(events)
     {:reply, reply, events, %{config | state: state}}
   end
 
   defp wrap_response({:reply, reply, events, state, opts}, config) do
-    config.post_emit.(events)
+    config.post_process.(events)
     {:reply, reply, events, %{config | state: state}, opts}
   end
 
