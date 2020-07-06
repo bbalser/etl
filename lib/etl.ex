@@ -50,14 +50,14 @@ defmodule Etl do
       error_handler: error_handler
     }
 
-    source_stages =
-      Etl.Source.stages(source, context)
-      |> Enum.map(&intercept/1)
+    destination_stages =
+      Etl.Destination.stages(destination, context)
+      |> List.update_at(-1, &intercept/1)
 
     stages =
-      source_stages ++
+      Etl.Source.stages(source, context) ++
         transformation_stages(transformations, context) ++
-        Etl.Destination.stages(destination, context)
+        destination_stages
 
     pids = start_stages(stages)
     subscriptions = setup_pipeline(pids, context)
@@ -125,21 +125,21 @@ defmodule Etl do
 
   defp transformation_stages(transformations, context) do
     transformations
-    |> Enum.map(fn transformation ->
-      {Etl.Transformation.stage_or_function(transformation), transformation}
-    end)
+    |> Enum.map(fn transformation -> {Etl.Transformation.stage_or_function(transformation), transformation} end)
     |> Enum.chunk_by(fn {type, _} -> type end)
-    |> Enum.map(fn
-      [{:function, _} | _] = chunk ->
-        Enum.map(chunk, fn {_type, transformation} -> transformation end)
-        |> create_transformation_function_stage(context)
-
-      [{:stage, _} | _] = chunk ->
-        Enum.reduce(chunk, [], fn {_type, transformation}, buffer ->
-          buffer ++ Etl.Transformation.stages(transformation, context)
-        end)
-    end)
+    |> Enum.map(&map_functions_or_stages(&1, context))
     |> List.flatten()
+  end
+
+  defp map_functions_or_stages([{:function, _} | _] = chunk, context) do
+    Enum.map(chunk, fn {_type, transformation} -> transformation end)
+    |> create_transformation_function_stage(context)
+  end
+
+  defp map_functions_or_stages([{:stage, _} | _] = chunk, context) do
+    Enum.reduce(chunk, [], fn {_type, transformation}, buffer ->
+      buffer ++ Etl.Transformation.stages(transformation, context)
+    end)
   end
 
   defp create_transformation_function_stage(transformations, context) do
@@ -162,11 +162,15 @@ defmodule Etl do
     end
   end
 
-  defp intercept({module, args}) do
-    {Etl.Stage.Interceptor, stage: module, args: args}
+  defp intercept(child_spec, opts \\ [])
+
+  defp intercept({module, args}, opts) do
+    interceptor_opts = Keyword.merge(opts, stage: module, args: args)
+    {Etl.Stage.Interceptor, interceptor_opts}
   end
 
-  defp intercept(module) do
-    {Etl.Stage.Interceptor, stage: module}
+  defp intercept(module, opts) do
+    interceptor_opts = Keyword.merge(opts, stage: module)
+    {Etl.Stage.Interceptor, interceptor_opts}
   end
 end
