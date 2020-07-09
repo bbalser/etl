@@ -14,6 +14,9 @@ defmodule Etl.Transform.Stage do
   end
 
   def handle_events(events, _from, state) do
+    start_time = System.monotonic_time()
+    emit_start_metric(state.context.name, start_time, events, state.functions)
+
     transformed_events =
       events
       |> Enum.reduce([], fn event, buffer ->
@@ -28,6 +31,8 @@ defmodule Etl.Transform.Stage do
       end)
       |> Enum.reverse()
 
+    emit_stop_metric(state.context.name, start_time)
+
     {:noreply, transformed_events, state}
   end
 
@@ -35,5 +40,18 @@ defmodule Etl.Transform.Stage do
     reduce_while_success(state.functions, event, fn fun, data ->
       fun.(data)
     end)
+  end
+
+  defp emit_start_metric(name, start_time, messages, functions) do
+    metadata = %{name: name, messages: messages, functions: functions}
+    measurements = %{time: start_time}
+    :telemetry.execute([:etl, :transformation, :start], measurements, metadata)
+  end
+
+  defp emit_stop_metric(name, start_time) do
+    stop_time = System.monotonic_time()
+    measurements = %{time: stop_time, duration: stop_time - start_time}
+    metadata = %{name: name}
+    :telemetry.execute([:etl, :transformation, :stop], measurements, metadata)
   end
 end

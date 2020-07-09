@@ -1,4 +1,5 @@
 defmodule Etl.Stage.Interceptor do
+  require Logger
   use GenStage
 
   @types [:producer, :producer_consumer, :consumer]
@@ -10,10 +11,11 @@ defmodule Etl.Stage.Interceptor do
   def init(opts) do
     stage = Keyword.fetch!(opts, :stage)
     pre_process = Keyword.get(opts, :pre_process, fn x -> x end)
-    post_process = Keyword.get(opts, :post_process, fn x -> x end)
+    post_process = Keyword.get(opts, :post_process, fn x, _context -> x end)
+    name = Keyword.get(opts, :name)
     args = Keyword.get(opts, :args, [])
 
-    config = %{stage: stage, state: %{}, post_process: post_process, pre_process: pre_process}
+    config = %{stage: stage, state: %{}, name: name, post_process: post_process, pre_process: pre_process}
 
     stage.init(args)
     |> wrap_response(config)
@@ -83,53 +85,57 @@ defmodule Etl.Stage.Interceptor do
   end
 
   def handle_events(events, from, %{stage: stage, state: state} = config) do
-    config.pre_process.(events)
+    pre_process_output = config.pre_process.(events)
+    post_processor = fn handled_events -> config.post_process.(handled_events, pre_process_output) end
 
     stage.handle_events(events, from, state)
-    |> wrap_response(config)
+    |> wrap_response(config, post_processor)
   end
 
-  defp wrap_response({:noreply, events, state}, config) do
-    config.post_process.(events)
+  defp wrap_response(response, config, post_processor \\ nil)
+  
+  defp wrap_response({:noreply, events, state}, config, post_processor) do
+    conditional_process(events, post_processor)
     {:noreply, events, %{config | state: state}}
   end
 
-  defp wrap_response({:noreply, events, state, opts}, config) do
-    config.post_process.(events)
+  defp wrap_response({:noreply, events, state, opts}, config, post_processor) do
+    conditional_process(events, post_processor)
     {:noreply, events, %{config | state: state}, opts}
   end
 
-  defp wrap_response({:reply, reply, events, state}, config) do
-    config.post_process.(events)
+  defp wrap_response({:reply, reply, events, state}, config, post_processor) do
+    conditional_process(events, post_processor)
     {:reply, reply, events, %{config | state: state}}
   end
 
-  defp wrap_response({:reply, reply, events, state, opts}, config) do
-    config.post_process.(events)
+  defp wrap_response({:reply, reply, events, state, opts}, config, post_processor) do
+    conditional_process(events, post_processor)
     {:reply, reply, events, %{config | state: state}, opts}
   end
 
-  defp wrap_response({:stop, reason, reply, state}, config) do
+  defp wrap_response({:stop, reason, reply, state}, config, _post_processor) do
     {:stop, reason, reply, %{config | state: state}}
   end
 
-  defp wrap_response({:stop, reason, state}, config) do
+  defp wrap_response({:stop, reason, state}, config, _post_processor) do
     {:stop, reason, %{config | state: state}}
   end
 
-  defp wrap_response({:stop, reason}, _config) do
+  defp wrap_response({:stop, reason}, _config, _post_processor) do
     {:stop, reason}
   end
 
-  defp wrap_response({type, state}, config) when type in @types do
+  defp wrap_response({type, state}, config, _post_processor) when type in @types do
     {type, %{config | state: state}}
   end
 
-  defp wrap_response({type, state, opts}, config) when type in @types do
+  defp wrap_response({type, state, opts}, config, _post_processor) when type in @types do
     {type, %{config | state: state}, opts}
   end
 
-  defp wrap_response(response, _stage) do
-    response
-  end
+  defp wrap_response(response, _stage, _post_processor), do: response
+
+  defp conditional_process(events, processor) when is_function(processor), do: processor.(events)
+  defp conditional_process(_events, _non_processor), do: :noop
 end

@@ -36,7 +36,8 @@ defmodule Etl.Stage.InterceptorTest do
 
   test "interceptor will send events to post process handler" do
     test = self()
-    post_process = fn events ->
+
+    post_process = fn events, _ ->
       Enum.each(events, &send(test, {:post_process, &1}))
     end
 
@@ -60,6 +61,7 @@ defmodule Etl.Stage.InterceptorTest do
 
   test "interceptor will send event to pre process handler" do
     test = self()
+
     pre_process = fn events ->
       Enum.each(events, &send(test, {:pre_process, &1}))
     end

@@ -36,6 +36,7 @@ defmodule EtlTest do
     %{pids: [producer | _]} =
       etl =
       Etl.run(
+        name: :etl_test1,
         source: %Etl.TestSource{},
         transformations: [
           %Etl.Test.Transform.Upcase{}
@@ -60,6 +61,7 @@ defmodule EtlTest do
     %{pids: [producer | _]} =
       etl =
       Etl.run(
+        name: :etl_test2,
         source: %Etl.TestSource{},
         transformations: [
           %Etl.Test.Transform.Custom{function: fn x -> ok(x * 2) end},

@@ -4,6 +4,7 @@ defmodule Etl do
   @type dictionary :: term()
 
   @type t :: %__MODULE__{
+          name: atom(),
           source: Etl.Source.t(),
           destination: Etl.Destination.t(),
           transformations: [Etl.Transformation.t()],
@@ -12,7 +13,8 @@ defmodule Etl do
           subscriptions: [GenStage.subscription_tag()]
         }
 
-  defstruct source: nil,
+  defstruct name: nil,
+            source: nil,
             destination: nil,
             transformations: [],
             stages: [],
@@ -20,6 +22,7 @@ defmodule Etl do
             subscriptions: []
 
   @type run_opts :: [
+          name: atom(),
           source: Etl.Source.t(),
           transformations: [Etl.Transformation.t()],
           destination: Etl.Destination.t(),
@@ -31,6 +34,7 @@ defmodule Etl do
 
   @spec run(run_opts) :: t
   def run(opts) do
+    name = Keyword.fetch!(opts, :name)
     source = Keyword.fetch!(opts, :source)
     destination = Keyword.fetch!(opts, :destination)
     dictionary = Keyword.get(opts, :dictionary)
@@ -44,25 +48,23 @@ defmodule Etl do
       end)
 
     context = %Etl.Context{
+      name: name,
       dictionary: dictionary,
       min_demand: Keyword.get(opts, :min_demand, 500),
       max_demand: Keyword.get(opts, :max_demand, 1000),
       error_handler: error_handler
     }
 
-    destination_stages =
-      Etl.Destination.stages(destination, context)
-      |> List.update_at(-1, &intercept/1)
-
     stages =
-      Etl.Source.stages(source, context) ++
+      source_stages(source, context) ++
         transformation_stages(transformations, context) ++
-        destination_stages
+        destination_stages(destination, context)
 
     pids = start_stages(stages)
     subscriptions = setup_pipeline(pids, context)
 
     %__MODULE__{
+      name: name,
       source: source,
       destination: destination,
       stages: stages,
@@ -87,11 +89,17 @@ defmodule Etl do
   @spec ack([Etl.Message.t()]) :: :ok
   def ack(messages) do
     Enum.group_by(messages, fn %{acknowledger: {mod, ref, _data}} -> {mod, ref} end)
-    |> Enum.map(&group_by_status/1)
+    |> Enum.map(&keyed_group_by_status/1)
     |> Enum.each(fn {{mod, ref}, pass, fail} -> mod.ack(ref, pass, fail) end)
   end
 
-  defp group_by_status({key, messages}) do
+  defp keyed_group_by_status({key, messages}) do
+    {pass, fail} = group_by_status(messages)
+
+    {key, pass, fail}
+  end
+
+  defp group_by_status(messages) do
     {pass, fail} =
       Enum.reduce(messages, {[], []}, fn
         %{status: :ok} = msg, {pass, fail} ->
@@ -101,7 +109,7 @@ defmodule Etl do
           {pass, [msg | fail]}
       end)
 
-    {key, Enum.reverse(pass), Enum.reverse(fail)}
+    {Enum.reverse(pass), Enum.reverse(fail)}
   end
 
   defp start_stages(stages) do
@@ -123,12 +131,65 @@ defmodule Etl do
     |> Enum.map(fn {:ok, sub} -> sub end)
   end
 
+  defp source_stages(source, context) do
+    pre_processor = fn events ->
+      start_time = System.monotonic_time()
+      metadata = %{name: context.name, messages: events}
+      measurements = %{time: start_time}
+      :telemetry.execute([:etl, :producer, :start], measurements, metadata)
+
+      %{start_time: start_time}
+    end
+
+    post_processor = fn _events, %{start_time: start_time} ->
+      stop_time = System.monotonic_time()
+      measurements = %{time: stop_time, duration: stop_time - start_time}
+      metadata = %{name: context.name}
+      :telemetry.execute([:etl, :producer, :stop], measurements, metadata)
+    end
+
+    source
+    |> Etl.Source.stages(context)
+    |> List.update_at(0, &intercept(&1, pre_process: pre_processor, post_process: post_processor))
+  end
+
   defp transformation_stages(transformations, context) do
     transformations
     |> Enum.map(fn transformation -> {Etl.Transformation.stage_or_function(transformation), transformation} end)
     |> Enum.chunk_by(fn {type, _} -> type end)
     |> Enum.map(&map_functions_or_stages(&1, context))
     |> List.flatten()
+  end
+
+  defp destination_stages(destination, context) do
+    pre_processor = fn events ->
+      start_time = System.monotonic_time()
+      metadata = %{name: context.name, messages: events}
+      measurements = %{time: start_time}
+      :telemetry.execute([:etl, :consumer, :start], measurements, metadata)
+
+      %{start_time: start_time}
+    end
+
+    post_processor = fn events, %{start_time: start_time} ->
+      # Here's where I would put the acking call: Etl.ack(events)
+      {pass, fail} = group_by_status(events)
+      stop_time = System.monotonic_time()
+      metadata = %{name: context.name, successful_messages: pass, failed_messages: fail}
+
+      measurements = %{
+        time: stop_time,
+        duration: start_time - stop_time,
+        successful_count: Enum.count(pass),
+        failed_count: Enum.count(fail)
+      }
+
+      :telemetry.execute([:etl, :consumer, :stop], measurements, metadata)
+    end
+
+    destination
+    |> Etl.Destination.stages(context)
+    |> List.update_at(-1, &intercept(&1, pre_process: pre_processor, post_process: post_processor))
   end
 
   defp map_functions_or_stages([{:function, _} | _] = chunk, context) do
@@ -161,8 +222,6 @@ defmodule Etl do
         do_await(etl, delay, timeout, elapsed + delay)
     end
   end
-
-  defp intercept(child_spec, opts \\ [])
 
   defp intercept({module, args}, opts) do
     interceptor_opts = Keyword.merge(opts, stage: module, args: args)
