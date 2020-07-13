@@ -132,20 +132,19 @@ defmodule Etl do
   end
 
   defp source_stages(source, context) do
-    pre_processor = fn events ->
+    pre_processor = fn demand ->
       start_time = System.monotonic_time()
-      metadata = %{name: context.name, messages: events}
+      metadata = %{name: context.name, demand: demand}
       measurements = %{time: start_time}
-      :telemetry.execute([:etl, :producer, :start], measurements, metadata)
-
+      :telemetry.execute([:etl, :source, :start], measurements, metadata)
       %{start_time: start_time}
     end
 
-    post_processor = fn _events, %{start_time: start_time} ->
+    post_processor = fn events, %{start_time: start_time} ->
       stop_time = System.monotonic_time()
       measurements = %{time: stop_time, duration: stop_time - start_time}
-      metadata = %{name: context.name}
-      :telemetry.execute([:etl, :producer, :stop], measurements, metadata)
+      metadata = %{name: context.name, messages: events}
+      :telemetry.execute([:etl, :source, :stop], measurements, metadata)
     end
 
     source
@@ -166,25 +165,22 @@ defmodule Etl do
       start_time = System.monotonic_time()
       metadata = %{name: context.name, messages: events}
       measurements = %{time: start_time}
-      :telemetry.execute([:etl, :consumer, :start], measurements, metadata)
-
-      %{start_time: start_time}
+      :telemetry.execute([:etl, :destination, :start], measurements, metadata)
+      %{messages: events, start_time: start_time}
     end
 
-    post_processor = fn events, %{start_time: start_time} ->
-      # Here's where I would put the acking call: Etl.ack(events)
-      {pass, fail} = group_by_status(events)
+    post_processor = fn _events, %{messages: msgs, start_time: start_time} ->
+      # Here's where I would put the acking call: Etl.ack(msgs)
+      {pass, fail} = group_by_status(msgs)
       stop_time = System.monotonic_time()
       metadata = %{name: context.name, successful_messages: pass, failed_messages: fail}
-
       measurements = %{
         time: stop_time,
         duration: start_time - stop_time,
         successful_count: Enum.count(pass),
         failed_count: Enum.count(fail)
       }
-
-      :telemetry.execute([:etl, :consumer, :stop], measurements, metadata)
+      :telemetry.execute([:etl, :destination, :stop], measurements, metadata)
     end
 
     destination

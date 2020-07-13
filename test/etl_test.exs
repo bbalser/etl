@@ -81,6 +81,59 @@ defmodule EtlTest do
     assert_receive {:event, 119}, 2_000
   end
 
+  test "etl emits telemetry events", %{test: test} do
+    self = self()
+    message_seq = 1..5
+
+    :ok =
+      :telemetry.attach_many(
+        "#{test}",
+        [
+          [:etl, :source, :start],
+          [:etl, :source, :stop],
+          [:etl, :transformation, :start],
+          [:etl, :transformation, :stop],
+          [:etl, :destination, :start],
+          [:etl, :destination, :stop]
+        ],
+        fn name, measurements, metadata, _ ->
+          send(self, {:telemetry_event, name, measurements, metadata})
+        end,
+        nil
+      )
+
+    %{pids: [producer | _]} =
+      etl =
+      Etl.run(
+        name: :etl_test_telemetry,
+        source: %Etl.TestSource{},
+        transformations: [ %Etl.Test.Transform.Upcase{}],
+        destination: %Etl.TestDestination{pid: self()}
+      )
+
+    events = Enum.map(message_seq, fn i -> "event-#{i}" end)
+
+    Etl.TestSource.send_events(producer, events)
+    Etl.TestSource.stop(producer)
+
+    :ok = Etl.await(etl, delay: 100, timeout: 5_000)
+
+    Enum.each(events, fn event ->
+      transformed_event = String.upcase(event)
+      assert_receive {:event, ^transformed_event}, 1_000
+    end)
+
+    assert_receive {:telemetry_event, [:etl, :source, :start], %{}, %{}}
+    assert_receive {:telemetry_event, [:etl, :source, :stop], %{}, %{}}
+
+    assert_receive {:telemetry_event, [:etl, :transformation, :start], %{}, %{}}
+    assert_receive {:telemetry_event, [:etl, :transformation, :stop], %{}, %{}}
+
+    assert_receive {:telemetry_event, [:etl, :destination, :start], %{}, %{}}
+    assert_receive {:telemetry_event, [:etl, :destination, :stop], measurements, %{}}
+    assert %{successful_count: 5} == measurements
+  end
+
   defp status(i) when rem(i, 2) == 0, do: :ok
   defp status(_), do: {:error, "test"}
 end

@@ -37,8 +37,11 @@ defmodule Etl.Stage.Interceptor do
   end
 
   def handle_cast(request, %{stage: stage, state: state} = config) do
+    pre_process_output = config.pre_process.(request)
+    post_processor = fn events -> config.post_process.(events, pre_process_output) end
+
     stage.handle_cast(request, state)
-    |> wrap_response(config)
+    |> wrap_response(config, post_processor)
   end
 
   def handle_info(request, %{stage: stage, state: state} = config) do
@@ -80,8 +83,11 @@ defmodule Etl.Stage.Interceptor do
   end
 
   def handle_demand(demand, %{stage: stage, state: state} = config) do
+    pre_process_output = config.pre_process.(demand)
+    post_processor = fn events -> config.post_process.(events, pre_process_output) end
+
     stage.handle_demand(demand, state)
-    |> wrap_response(config)
+    |> wrap_response(config, post_processor)
   end
 
   def handle_events(events, from, %{stage: stage, state: state} = config) do
