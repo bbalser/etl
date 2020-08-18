@@ -50,14 +50,10 @@ defmodule Etl do
       error_handler: error_handler
     }
 
-    destination_stages =
-      Etl.Destination.stages(destination, context)
-      |> List.update_at(-1, &intercept/1)
-
     stages =
-      Etl.Source.stages(source, context) ++
+      source_stages(source, context) ++
         transformation_stages(transformations, context) ++
-        destination_stages
+        destination_stages(destination, context)
 
     pids = start_stages(stages)
     subscriptions = setup_pipeline(pids, context)
@@ -123,12 +119,26 @@ defmodule Etl do
     |> Enum.map(fn {:ok, sub} -> sub end)
   end
 
+  defp source_stages(source, context) do
+    source
+    |> Etl.Source.stages(context)
+    |> List.update_at(0, &intercept/1)
+  end
+
   defp transformation_stages(transformations, context) do
     transformations
     |> Enum.map(fn transformation -> {Etl.Transformation.stage_or_function(transformation), transformation} end)
     |> Enum.chunk_by(fn {type, _} -> type end)
     |> Enum.map(&map_functions_or_stages(&1, context))
     |> List.flatten()
+  end
+
+  defp destination_stages(destination, context) do
+    post_processor = fn events -> Etl.ack(events) end
+
+    destination
+    |> Etl.Destination.stages(context)
+    |> List.update_at(-1, &intercept(&1, post_process: post_processor))
   end
 
   defp map_functions_or_stages([{:function, _} | _] = chunk, context) do

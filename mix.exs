@@ -33,9 +33,9 @@ defmodule Etl.MixProject do
       {:gen_stage, "~> 1.0"},
       {:brex_result, "~> 0.4.0"},
       {:timex, "~> 3.6"},
-      {:dialyxir, "~> 1.0.0-rc.7", only: [:dev], runtime: false},
+      {:dialyxir, "~> 1.0.0", only: [:dev], runtime: false},
       {:ex_doc, "~> 0.22.1", only: [:dev]},
-      {:placebo, "~> 1.2", only: [:dev, :test]},
+      {:placebo, "~> 2.0.0-rc.2", only: [:dev, :test]},
       {:checkov, "~> 1.0", only: [:dev, :test]},
       {:mox, "~> 0.5", only: [:test]}
     ]

@@ -13,8 +13,8 @@ defmodule Test.File.Destination do
   end
 
   def handle_events(events, _from, state) do
-    Enum.each(events, fn event ->
-      IO.write(state.file, event)
+    Enum.each(events, fn %Etl.Message{data: data} ->
+      IO.write(state.file, data)
     end)
 
     {:noreply, [], state}

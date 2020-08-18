@@ -6,7 +6,7 @@ defmodule Etl.Transform.StageTest do
     test = self()
 
     context = %Etl.Context{
-      error_handler: fn event, reason -> send(test, {:error, event, reason}) end
+      error_handler: fn event, reason -> send(test, {:error, event.data, reason}) end
     }
 
     functions = [
@@ -18,7 +18,7 @@ defmodule Etl.Transform.StageTest do
       end
     ]
 
-    producer = start_supervised!(Etl.TestSource.Stage)
+    producer = start_supervised!({Etl.TestSource.Stage, %Etl.TestSource{pid: test}})
 
     function_stage = start_supervised!({Etl.Transform.Stage, context: context, functions: functions})
 
