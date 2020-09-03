@@ -33,17 +33,19 @@ defmodule EtlTest do
   end
 
   test "etl can run a source to a destination" do
+    test = self()
+
     %{pids: [producer | _]} =
       etl =
       Etl.run(
-        source: %Etl.TestSource{},
+        source: %Etl.TestSource{pid: test},
         transformations: [
           %Etl.Test.Transform.Upcase{}
         ],
-        destination: %Etl.TestDestination{pid: self()}
+        destination: %Etl.TestDestination{pid: test}
       )
 
-    events = Enum.map(1..100, fn i -> "event-#{i}" end)
+    events = Enum.map(1..2, fn i -> "event-#{i}" end)
 
     Etl.TestSource.send_events(producer, events)
     Etl.TestSource.stop(producer)
@@ -54,20 +56,24 @@ defmodule EtlTest do
       transformed_event = String.upcase(event)
       assert_receive {:event, ^transformed_event}, 1_000
     end)
+
+    assert_receive %{success: 2, fail: 0}, 2_000
   end
 
   test "etl can support transformations that are stages" do
+    test = self()
+
     %{pids: [producer | _]} =
       etl =
       Etl.run(
-        source: %Etl.TestSource{},
+        source: %Etl.TestSource{pid: test},
         transformations: [
           %Etl.Test.Transform.Custom{function: fn x -> ok(x * 2) end},
           %Etl.Test.Transform.Custom{function: fn x -> ok(x + 1) end},
           %Etl.Test.Transform.Sum{},
           %Etl.Test.Transform.Custom{function: fn x -> ok(x - 1) end}
         ],
-        destination: %Etl.TestDestination{pid: self()}
+        destination: %Etl.TestDestination{pid: test}
       )
 
     Etl.TestSource.send_events(producer, [1, 2, 3, 4, 5])
@@ -77,6 +83,7 @@ defmodule EtlTest do
     :ok = Etl.await(etl, delay: 100, timeout: 5_000)
 
     assert_receive {:event, 119}, 2_000
+    assert_receive %{success: 1, fail: 0}, 2_000
   end
 
   defp status(i) when rem(i, 2) == 0, do: :ok

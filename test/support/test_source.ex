@@ -1,9 +1,9 @@
 defmodule Etl.TestSource do
-  defstruct []
+  defstruct [:pid]
 
   defimpl Etl.Source do
-    def stages(_t, _context) do
-      [Etl.TestSource.Stage]
+    def stages(t, _context) do
+      [{Etl.TestSource.Stage, t}]
     end
   end
 
@@ -19,16 +19,17 @@ end
 defmodule Etl.TestSource.Stage do
   use GenStage, restart: :transient
 
-  def start_link(opts) do
-    GenStage.start_link(__MODULE__, opts)
+  def start_link(t) do
+    GenStage.start_link(__MODULE__, t)
   end
 
-  def init(_opts) do
-    {:producer, %{}}
+  def init(t) do
+    {:producer, t}
   end
 
   def handle_cast({:events, events}, state) do
-    {:noreply, events, state}
+    messages = Enum.map(events, &to_etl_message(&1, state.pid))
+    {:noreply, messages, state}
   end
 
   def handle_cast({:stop, reason}, state) do
@@ -37,5 +38,12 @@ defmodule Etl.TestSource.Stage do
 
   def handle_demand(_demand, state) do
     {:noreply, [], state}
+  end
+
+  defp to_etl_message(event, source) do
+    %Etl.Message{
+      data: event,
+      acknowledger: {Etl.TestAcknowledger, source, event}
+    }
   end
 end

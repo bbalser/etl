@@ -16,11 +16,17 @@ defmodule Etl.TestDestination.Stage do
   end
 
   def init(t) do
+    Process.flag(:trap_exit, true)
     {:consumer, t}
   end
 
   def handle_events(events, _from, state) do
-    Enum.each(events, &send(state.pid, {:event, &1}))
+    Enum.each(events, &send(state.pid, {:event, &1.data}))
+    {:noreply, [], state}
+  end
+
+  def handle_cancel(reason, _from, state) do
+    Process.send_after(self(), reason, 500)
     {:noreply, [], state}
   end
 end

@@ -13,14 +13,14 @@ defmodule Etl.Stage.InterceptorTest do
     end
 
     def handle_events(events, _from, state) do
-      new_events = Enum.map(events, fn x -> x * 2 end)
+      new_events = Enum.map(events, fn %Etl.Message{data: x} = event -> %{event | data: x * 2} end)
 
       {:noreply, new_events, state}
     end
   end
 
   test "interceptor will allow events to pass" do
-    producer = start_supervised!(Etl.TestSource.Stage)
+    producer = start_supervised!({Etl.TestSource.Stage, %{pid: self()}})
     interceptor = start_supervised!({Etl.Stage.Interceptor, stage: Stage})
     consumer = start_supervised!({Etl.TestDestination.Stage, %{pid: self()}})
 
@@ -36,11 +36,12 @@ defmodule Etl.Stage.InterceptorTest do
 
   test "interceptor will send events to post process handler" do
     test = self()
+
     post_process = fn events ->
-      Enum.each(events, &send(test, {:post_process, &1}))
+      Enum.each(events, &send(test, {:post_process, &1.data}))
     end
 
-    producer = start_supervised!(Etl.TestSource.Stage)
+    producer = start_supervised!({Etl.TestSource.Stage, %{pid: self()}})
     interceptor = start_supervised!({Etl.Stage.Interceptor, stage: Stage, post_process: post_process})
     consumer = start_supervised!({Etl.TestDestination.Stage, %{pid: self()}})
 
@@ -60,11 +61,12 @@ defmodule Etl.Stage.InterceptorTest do
 
   test "interceptor will send event to pre process handler" do
     test = self()
+
     pre_process = fn events ->
-      Enum.each(events, &send(test, {:pre_process, &1}))
+      Enum.each(events, &send(test, {:pre_process, &1.data}))
     end
 
-    producer = start_supervised!(Etl.TestSource.Stage)
+    producer = start_supervised!({Etl.TestSource.Stage, %{pid: self()}})
     interceptor = start_supervised!({Etl.Stage.Interceptor, stage: Stage, pre_process: pre_process})
     consumer = start_supervised!({Etl.TestDestination.Stage, %{pid: self()}})
 

@@ -26,7 +26,7 @@ defmodule Test.File.Source do
             {:halt, buffer}
 
           data ->
-            {:cont, [data | buffer]}
+            {:cont, [to_etl_message(data) | buffer]}
         end
       end)
       |> Enum.reverse()
@@ -37,5 +37,12 @@ defmodule Test.File.Source do
   def handle_info(:end_of_file, state) do
     Logger.debug(fn -> "Shutting down producer -- end of file" end)
     {:stop, :normal, state}
+  end
+
+  defp to_etl_message(event) do
+    %Etl.Message{
+      data: event,
+      acknowledger: {Etl.TestAcknowledger, :ack_ref, event}
+    }
   end
 end
