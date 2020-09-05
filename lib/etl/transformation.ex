@@ -14,40 +14,52 @@ end
 
 defmodule Etl.Transformation.Stage do
   defmacro __using__(_opts) do
-    quote do
-      def stage_or_function(_t) do
-        :stage
+    quote(location: :keep) do
+      def stage_or_function(t) do
+        Etl.Transformation.Stage.stage_or_function(t)
       end
 
-      def function(_t, _context) do
-        fn x -> {:ok, x} end
+      def function(t, context) do
+        Etl.Transformation.Stage.function(t, context)
       end
 
       def dictionary(dictionary) do
-        {:ok, dictionary}
+        Etl.Transformation.Stage.dictionary(dictionary)
       end
 
       defoverridable dictionary: 1
     end
   end
+
+  def stage_or_function(_t), do: :stage
+
+  def function(_t, _context), do: fn x -> {:ok, x} end
+
+  def dictionary(dictionary), do: {:ok, dictionary}
 end
 
 defmodule Etl.Transformation.Function do
   defmacro __using__(_opts) do
-    quote do
-      def stage_or_function(_t) do
-        :function
+    quote(location: :keep) do
+      def stage_or_function(t) do
+        Etl.Transformation.Function.stage_or_function(t)
       end
 
-      def stages(_t, _context) do
-        []
+      def stages(t, context) do
+        Etl.Transformation.Function.stages(t, context)
       end
 
       def dictionary(dictionary) do
-        {:ok, dictionary}
+        Etl.Transformation.Function.dictionary(dictionary)
       end
 
       defoverridable dictionary: 1
     end
   end
+
+  def stage_or_function(_t), do: :function
+
+  def stages(_t, _context), do: []
+
+  def dictionary(dictionary), do: {:ok, dictionary}
 end
