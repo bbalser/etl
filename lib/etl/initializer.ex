@@ -12,7 +12,7 @@ defmodule Etl.Initializer do
   defp start_pipeline([], _context, result), do: result
 
   defp start_pipeline([%Stage{} = stage | remaining], context, %{pids: pids, subs: subs}) do
-    {:ok, pid} = start_child(stage.child_spec)
+    {:ok, pid} = start_child(stage.child_spec, context)
 
     {:ok, sub} = GenStage.sync_subscribe(pid, stage.subscription_opts)
 
@@ -20,7 +20,7 @@ defmodule Etl.Initializer do
   end
 
   defp start_pipeline([child_spec | remaining], context, %{pids: pids, subs: subs}) do
-    {:ok, pid} = start_child(child_spec)
+    {:ok, pid} = start_child(child_spec, context)
 
     next(remaining, pid, context, %{pids: [pid | pids], subs: subs})
   end
@@ -46,8 +46,8 @@ defmodule Etl.Initializer do
     end
   end
 
-  defp start_child(child_spec) do
-    DynamicSupervisor.start_child(Etl.DynamicSupervisor, child_spec)
+  defp start_child(child_spec, context) do
+    DynamicSupervisor.start_child(context.dynamic_supervisor, child_spec)
   end
 
   defp subscription_opts(pid, context) do

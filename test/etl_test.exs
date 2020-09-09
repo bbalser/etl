@@ -3,7 +3,15 @@ defmodule EtlTest do
   import Mox
   import Brex.Result.Base, only: [ok: 1]
 
+  @supervisor Test.DynSupervisor
+
   setup :verify_on_exit!
+
+  setup do
+    start_supervised!({DynamicSupervisor, strategy: :one_for_one, name: @supervisor})
+
+    :ok
+  end
 
   describe "ack/1" do
     test "groups messages by ack_ref" do
@@ -42,7 +50,8 @@ defmodule EtlTest do
         transformations: [
           %Etl.Test.Transform.Upcase{}
         ],
-        destination: %Etl.TestDestination{pid: test}
+        destination: %Etl.TestDestination{pid: test},
+        dynamic_supervisor: @supervisor
       )
 
     events = Enum.map(1..2, fn i -> "event-#{i}" end)
@@ -73,7 +82,8 @@ defmodule EtlTest do
           %Etl.Test.Transform.Sum{},
           %Etl.Test.Transform.Custom{function: fn x -> ok(x - 1) end}
         ],
-        destination: %Etl.TestDestination{pid: test}
+        destination: %Etl.TestDestination{pid: test},
+        dynamic_supervisor: @supervisor
       )
 
     Etl.TestSource.send_events(producer, [1, 2, 3, 4, 5])
@@ -95,7 +105,8 @@ defmodule EtlTest do
         transformations: [
           %Etl.Test.Transform.Custom{function: fn x -> {:ok, x * 2} end}
         ],
-        destination: %Etl.TestDestination{pid: test}
+        destination: %Etl.TestDestination{pid: test},
+        dynamic_supervisor: @supervisor
       )
 
     Etl.TestSource.send_events(producer, [1, 2, 3, 4, 5])

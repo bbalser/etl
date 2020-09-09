@@ -47,7 +47,8 @@ defmodule Etl do
       dictionary: dictionary,
       min_demand: Keyword.get(opts, :min_demand, 500),
       max_demand: Keyword.get(opts, :max_demand, 1000),
-      error_handler: error_handler
+      error_handler: error_handler,
+      dynamic_supervisor: Keyword.get(opts, :dynamic_supervisor, Etl.DynamicSupervisor)
     }
 
     stages =
