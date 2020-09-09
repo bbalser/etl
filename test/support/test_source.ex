@@ -1,5 +1,5 @@
 defmodule Etl.TestSource do
-  defstruct [:pid]
+  defstruct [:pid, partitions: []]
 
   defimpl Etl.Source do
     def stages(t, _context) do
@@ -24,7 +24,10 @@ defmodule Etl.TestSource.Stage do
   end
 
   def init(t) do
-    {:producer, t}
+    case t.partitions do
+      [] -> {:producer, t}
+      partitions -> {:producer, t, dispatcher: {GenStage.PartitionDispatcher, partitions: partitions}}
+    end
   end
 
   def handle_cast({:events, events}, state) do

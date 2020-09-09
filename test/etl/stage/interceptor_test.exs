@@ -20,7 +20,7 @@ defmodule Etl.Stage.InterceptorTest do
   end
 
   test "interceptor will allow events to pass" do
-    producer = start_supervised!({Etl.TestSource.Stage, %{pid: self()}})
+    producer = start_supervised!({Etl.TestSource.Stage, %Etl.TestSource{pid: self()}})
     interceptor = start_supervised!({Etl.Stage.Interceptor, stage: Stage})
     consumer = start_supervised!({Etl.TestDestination.Stage, %{pid: self()}})
 
@@ -41,7 +41,7 @@ defmodule Etl.Stage.InterceptorTest do
       Enum.each(events, &send(test, {:post_process, &1.data}))
     end
 
-    producer = start_supervised!({Etl.TestSource.Stage, %{pid: self()}})
+    producer = start_supervised!({Etl.TestSource.Stage, %Etl.TestSource{pid: self()}})
     interceptor = start_supervised!({Etl.Stage.Interceptor, stage: Stage, post_process: post_process})
     consumer = start_supervised!({Etl.TestDestination.Stage, %{pid: self()}})
 
@@ -66,7 +66,7 @@ defmodule Etl.Stage.InterceptorTest do
       Enum.each(events, &send(test, {:pre_process, &1.data}))
     end
 
-    producer = start_supervised!({Etl.TestSource.Stage, %{pid: self()}})
+    producer = start_supervised!({Etl.TestSource.Stage, %Etl.TestSource{pid: self()}})
     interceptor = start_supervised!({Etl.Stage.Interceptor, stage: Stage, pre_process: pre_process})
     consumer = start_supervised!({Etl.TestDestination.Stage, %{pid: self()}})
 

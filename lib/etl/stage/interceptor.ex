@@ -13,7 +13,7 @@ defmodule Etl.Stage.Interceptor do
     post_process = Keyword.get(opts, :post_process, fn x -> x end)
     args = Keyword.get(opts, :args, [])
 
-    config = %{stage: stage, state: %{}, type: nil, post_process: post_process, pre_process: pre_process}
+    config = %{stage: stage, state: %{}, type: nil, post_process: post_process, pre_process: pre_process, init_opts: []}
 
     stage.init(args)
     |> wrap_response([], config)
@@ -27,6 +27,10 @@ defmodule Etl.Stage.Interceptor do
       false ->
         state
     end
+  end
+
+  def handle_call(:"$dispatcher", _from, %{init_opts: init_opts} = config) do
+    {:reply, Keyword.get(init_opts, :dispatcher), [], config}
   end
 
   def handle_call(request, from, %{stage: stage, state: state} = config) do
@@ -128,7 +132,7 @@ defmodule Etl.Stage.Interceptor do
   end
 
   defp wrap_response({type, state, opts}, _events, config, _post_processor) when type in @types do
-    {type, %{config | state: state, type: type}, opts}
+    {type, %{config | state: state, type: type, init_opts: opts}, opts}
   end
 
   defp wrap_response(response, _events, _stage, _post_processor), do: response
