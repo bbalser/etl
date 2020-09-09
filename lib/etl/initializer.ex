@@ -34,7 +34,9 @@ defmodule Etl.Initializer do
       {GenStage.PartitionDispatcher, opts} ->
         partitions = Keyword.get(opts, :partitions)
 
-        Enum.reduce(0..(partitions - 1), result, fn partition, incoming_result ->
+        partitions
+        |> to_list()
+        |> Enum.reduce(result, fn partition, incoming_result ->
           next_stage = %Stage{child_spec: child_spec, subscription_opts: subscription_opts(pid, context, partition)}
           start_pipeline([next_stage | remaining], context, incoming_result)
         end)
@@ -45,6 +47,9 @@ defmodule Etl.Initializer do
         start_pipeline([next_stage | remaining], context, result)
     end
   end
+
+  defp to_list(list) when is_list(list), do: list
+  defp to_list(integer) when is_integer(integer), do: 0..(integer - 1)
 
   defp start_child(child_spec, context) do
     DynamicSupervisor.start_child(context.dynamic_supervisor, child_spec)

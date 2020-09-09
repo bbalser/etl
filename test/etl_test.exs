@@ -96,12 +96,40 @@ defmodule EtlTest do
     assert_receive %{success: 1, fail: 0}, 2_000
   end
 
-  test "etl can support partitions" do
+  test "etl can support simple number of partitions" do
     test = self()
 
     %{pids: [producer | _]} = etl =
       Etl.run(
         source: %Etl.TestSource{pid: test, partitions: 2},
+        transformations: [
+          %Etl.Test.Transform.Custom{function: fn x -> {:ok, x * 2} end}
+        ],
+        destination: %Etl.TestDestination{pid: test},
+        dynamic_supervisor: @supervisor
+      )
+
+    Etl.TestSource.send_events(producer, [1, 2, 3, 4, 5])
+    Etl.TestSource.stop(producer)
+
+    :ok = Etl.await(etl, delay: 100, timeout: 5_000)
+
+    assert_receive {:event, 10}, 2_000
+  end
+
+  test "etl can support custom partitions" do
+    test = self()
+
+    hash = fn event ->
+      case rem(event.data, 2) do
+        0 -> {event, :even}
+        1 -> {event, :odd}
+      end
+    end
+
+    %{pids: [producer | _]} = etl =
+      Etl.run(
+        source: %Etl.TestSource{pid: test, partitions: [:odd, :even], hash: hash},
         transformations: [
           %Etl.Test.Transform.Custom{function: fn x -> {:ok, x * 2} end}
         ],
