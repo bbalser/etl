@@ -99,7 +99,8 @@ defmodule EtlTest do
   test "etl can support simple number of partitions" do
     test = self()
 
-    %{pids: [producer | _]} = etl =
+    %{pids: [producer | _]} =
+      etl =
       Etl.run(
         source: %Etl.TestSource{pid: test, partitions: 2},
         transformations: [
@@ -127,7 +128,8 @@ defmodule EtlTest do
       end
     end
 
-    %{pids: [producer | _]} = etl =
+    %{pids: [producer | _]} =
+      etl =
       Etl.run(
         source: %Etl.TestSource{pid: test, partitions: [:odd, :even], hash: hash},
         transformations: [

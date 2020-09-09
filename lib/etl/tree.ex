@@ -1,5 +1,4 @@
 defmodule Etl.Tree do
-
   def show(%Etl{pids: [producer | _]}) do
     tree(producer)
   end

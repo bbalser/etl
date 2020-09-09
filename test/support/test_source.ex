@@ -31,15 +31,14 @@ defmodule Etl.TestSource.Stage do
         {:producer, t}
 
       partitions when is_integer(partitions) ->
-        hash = t.hash || fn event ->{event, :erlang.phash2(event, partitions)} end
+        hash = t.hash || fn event -> {event, :erlang.phash2(event, partitions)} end
         opts = [partitions: partitions, hash: hash]
         {:producer, t, dispatcher: {GenStage.PartitionDispatcher, opts}}
 
       partitions ->
-        hash = t.hash || fn event ->{event, :erlang.phash2(event, Enum.count(partitions))} end
+        hash = t.hash || fn event -> {event, :erlang.phash2(event, Enum.count(partitions))} end
         opts = [partitions: partitions, hash: hash]
         {:producer, t, dispatcher: {GenStage.PartitionDispatcher, opts}}
-
     end
   end
 
