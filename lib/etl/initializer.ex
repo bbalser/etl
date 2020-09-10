@@ -16,20 +16,20 @@ defmodule Etl.Initializer do
 
     {:ok, sub} = GenStage.sync_subscribe(pid, stage.subscription_opts)
 
-    next(remaining, pid, context, %{pids: [pid | pids], subs: [sub | subs]})
+    continue_pipeline(remaining, pid, context, %{pids: [pid | pids], subs: [sub | subs]})
   end
 
   defp start_pipeline([child_spec | remaining], context, %{pids: pids, subs: subs}) do
     {:ok, pid} = start_child(child_spec, context)
 
-    next(remaining, pid, context, %{pids: [pid | pids], subs: subs})
+    continue_pipeline(remaining, pid, context, %{pids: [pid | pids], subs: subs})
   end
 
-  defp next([], _pid, _context, result) do
+  defp continue_pipeline([], _pid, _context, result) do
     result
   end
 
-  defp next([child_spec | remaining], pid, context, result) do
+  defp continue_pipeline([child_spec | remaining], pid, context, result) do
     case GenStage.call(pid, :"$dispatcher") do
       {GenStage.PartitionDispatcher, opts} ->
         partitions = Keyword.get(opts, :partitions)
@@ -64,11 +64,8 @@ defmodule Etl.Initializer do
   end
 
   defp subscription_opts(pid, context, partition) do
-    [
-      to: pid,
-      max_demand: context.max_demand,
-      min_demand: context.min_demand,
-      partition: partition
-    ]
+    pid
+    |> subscription_opts(context)
+    |> Keyword.put(:partition, partition)
   end
 end
