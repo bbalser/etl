@@ -112,7 +112,7 @@ defmodule Etl.Tree do
   defp format_partition(nil), do: ""
   defp format_partition(partition), do: ["(", to_string(partition), ")"]
 
-  defp format_buffer_size(nil),do: ""
+  defp format_buffer_size(nil), do: ""
   defp format_buffer_size(buffer_size), do: ["buffer: ", to_string(buffer_size)]
 
   defp format_dispatcher(GenStage.DemandDispatcher), do: ""
