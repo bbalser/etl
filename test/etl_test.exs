@@ -3,7 +3,15 @@ defmodule EtlTest do
   import Mox
   import Brex.Result.Base, only: [ok: 1]
 
+  @supervisor Test.DynSupervisor
+
   setup :verify_on_exit!
+
+  setup do
+    start_supervised!({DynamicSupervisor, strategy: :one_for_one, name: @supervisor})
+
+    :ok
+  end
 
   describe "ack/1" do
     test "groups messages by ack_ref" do
@@ -42,7 +50,8 @@ defmodule EtlTest do
         transformations: [
           %Etl.Test.Transform.Upcase{}
         ],
-        destination: %Etl.TestDestination{pid: test}
+        destination: %Etl.TestDestination{pid: test},
+        dynamic_supervisor: @supervisor
       )
 
     events = Enum.map(1..2, fn i -> "event-#{i}" end)
@@ -73,7 +82,8 @@ defmodule EtlTest do
           %Etl.Test.Transform.Sum{},
           %Etl.Test.Transform.Custom{function: fn x -> ok(x - 1) end}
         ],
-        destination: %Etl.TestDestination{pid: test}
+        destination: %Etl.TestDestination{pid: test},
+        dynamic_supervisor: @supervisor
       )
 
     Etl.TestSource.send_events(producer, [1, 2, 3, 4, 5])
@@ -84,6 +94,57 @@ defmodule EtlTest do
 
     assert_receive {:event, 119}, 2_000
     assert_receive %{success: 1, fail: 0}, 2_000
+  end
+
+  test "etl can support simple number of partitions" do
+    test = self()
+
+    %{pids: [producer | _]} =
+      etl =
+      Etl.run(
+        source: %Etl.TestSource{pid: test, partitions: 2},
+        transformations: [
+          %Etl.Test.Transform.Custom{function: fn x -> {:ok, x * 2} end}
+        ],
+        destination: %Etl.TestDestination{pid: test},
+        dynamic_supervisor: @supervisor
+      )
+
+    Etl.TestSource.send_events(producer, [1, 2, 3, 4, 5])
+    Etl.TestSource.stop(producer)
+
+    :ok = Etl.await(etl, delay: 100, timeout: 5_000)
+
+    assert_receive {:event, 10}, 2_000
+  end
+
+  test "etl can support custom partitions" do
+    test = self()
+
+    hash = fn event ->
+      case rem(event.data, 2) do
+        0 -> {event, :even}
+        1 -> {event, :odd}
+      end
+    end
+
+    %{pids: [producer | _]} =
+      etl =
+      Etl.run(
+        source: %Etl.TestSource{pid: test, partitions: [:odd, :even], hash: hash},
+        transformations: [
+          %Etl.Test.Transform.Custom{function: fn x -> {:ok, x * 2} end}
+        ],
+        destination: %Etl.TestDestination{pid: test},
+        dynamic_supervisor: @supervisor
+      )
+
+    Etl.TestSource.send_events(producer, [1, 2, 3, 4, 5])
+    Etl.TestSource.stop(producer)
+
+    :ok = Etl.await(etl, delay: 100, timeout: 5_000)
+
+    assert_receive {:event, 10}, 2_000
   end
 
   defp status(i) when rem(i, 2) == 0, do: :ok

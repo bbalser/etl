@@ -1,5 +1,7 @@
 defmodule Etl.TestSource do
-  defstruct [:pid]
+  defstruct pid: nil,
+            partitions: [],
+            hash: nil
 
   defimpl Etl.Source do
     def stages(t, _context) do
@@ -24,7 +26,20 @@ defmodule Etl.TestSource.Stage do
   end
 
   def init(t) do
-    {:producer, t}
+    case t.partitions do
+      [] ->
+        {:producer, t}
+
+      partitions when is_integer(partitions) ->
+        hash = t.hash || fn event -> {event, :erlang.phash2(event, partitions)} end
+        opts = [partitions: partitions, hash: hash]
+        {:producer, t, dispatcher: {GenStage.PartitionDispatcher, opts}}
+
+      partitions ->
+        hash = t.hash || fn event -> {event, :erlang.phash2(event, Enum.count(partitions))} end
+        opts = [partitions: partitions, hash: hash]
+        {:producer, t, dispatcher: {GenStage.PartitionDispatcher, opts}}
+    end
   end
 
   def handle_cast({:events, events}, state) do

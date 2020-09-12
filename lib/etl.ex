@@ -47,7 +47,8 @@ defmodule Etl do
       dictionary: dictionary,
       min_demand: Keyword.get(opts, :min_demand, 500),
       max_demand: Keyword.get(opts, :max_demand, 1000),
-      error_handler: error_handler
+      error_handler: error_handler,
+      dynamic_supervisor: Keyword.get(opts, :dynamic_supervisor, Etl.DynamicSupervisor)
     }
 
     stages =
@@ -55,8 +56,7 @@ defmodule Etl do
         transformation_stages(transformations, context) ++
         destination_stages(destination, context)
 
-    pids = start_stages(stages)
-    subscriptions = setup_pipeline(pids, context)
+    {pids, subscriptions} = Etl.Initializer.start(stages, context)
 
     %__MODULE__{
       source: source,
@@ -100,29 +100,10 @@ defmodule Etl do
     {key, Enum.reverse(pass), Enum.reverse(fail)}
   end
 
-  defp start_stages(stages) do
-    stages
-    |> Enum.map(&DynamicSupervisor.start_child(Etl.DynamicSupervisor, &1))
-    |> Enum.map(fn {:ok, pid} -> pid end)
-  end
-
-  defp setup_pipeline(pids, context) do
-    pids
-    |> Enum.chunk_every(2, 1, :discard)
-    |> Enum.map(fn [a, b] ->
-      GenStage.sync_subscribe(b,
-        to: a,
-        max_demand: context.max_demand,
-        min_demand: context.min_demand
-      )
-    end)
-    |> Enum.map(fn {:ok, sub} -> sub end)
-  end
-
   defp source_stages(source, context) do
     source
     |> Etl.Source.stages(context)
-    |> List.update_at(0, &intercept/1)
+    |> Enum.map(&intercept/1)
   end
 
   defp transformation_stages(transformations, context) do
@@ -131,14 +112,18 @@ defmodule Etl do
     |> Enum.chunk_by(fn {type, _} -> type end)
     |> Enum.map(&map_functions_or_stages(&1, context))
     |> List.flatten()
+    |> Enum.map(&intercept/1)
   end
 
   defp destination_stages(destination, context) do
     post_processor = fn events -> Etl.ack(events) end
 
-    destination
-    |> Etl.Destination.stages(context)
-    |> List.update_at(-1, &intercept(&1, post_process: post_processor))
+    {last, list} =
+      destination
+      |> Etl.Destination.stages(context)
+      |> List.pop_at(-1)
+
+    Enum.map(list, &intercept/1) ++ [intercept(last, post_process: post_processor)]
   end
 
   defp map_functions_or_stages([{:function, _} | _] = chunk, context) do
