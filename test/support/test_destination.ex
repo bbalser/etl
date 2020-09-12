@@ -1,5 +1,5 @@
 defmodule Etl.TestDestination do
-  defstruct [:pid]
+  defstruct [:pid, :send]
 
   defimpl Etl.Destination do
     def stages(t, _context) do
@@ -21,7 +21,11 @@ defmodule Etl.TestDestination.Stage do
   end
 
   def handle_events(events, _from, state) do
-    Enum.each(events, &send(state.pid, {:event, &1.data}))
+    Enum.each(events, fn event ->
+      send(state.pid, {:event, event})
+      send(state.pid, {:data, event.data})
+    end)
+
     {:noreply, [], state}
   end
 

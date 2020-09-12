@@ -30,8 +30,8 @@ defmodule Etl.Transform.StageTest do
     Etl.TestSource.send_events(producer, [1, 2, 3, 4])
 
     assert_receive {:error, 1, :odd}
-    assert_receive {:event, 2}
+    assert_receive {:data, 2}
     assert_receive {:error, 3, :odd}
-    assert_receive {:event, 4}
+    assert_receive {:data, 4}
   end
 end

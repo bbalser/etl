@@ -63,7 +63,7 @@ defmodule EtlTest do
 
     Enum.each(events, fn event ->
       transformed_event = String.upcase(event)
-      assert_receive {:event, ^transformed_event}, 1_000
+      assert_receive {:data, ^transformed_event}, 1_000
     end)
 
     assert_receive %{success: 2, fail: 0}, 2_000
@@ -92,7 +92,7 @@ defmodule EtlTest do
 
     :ok = Etl.await(etl, delay: 100, timeout: 5_000)
 
-    assert_receive {:event, 119}, 2_000
+    assert_receive {:data, 119}, 2_000
     assert_receive %{success: 1, fail: 0}, 2_000
   end
 
@@ -104,6 +104,7 @@ defmodule EtlTest do
       Etl.run(
         source: %Etl.TestSource{pid: test, partitions: 2},
         transformations: [
+          %Etl.Test.PartitionTracker{},
           %Etl.Test.Transform.Custom{function: fn x -> {:ok, x * 2} end}
         ],
         destination: %Etl.TestDestination{pid: test},
@@ -115,7 +116,11 @@ defmodule EtlTest do
 
     :ok = Etl.await(etl, delay: 100, timeout: 5_000)
 
-    assert_receive {:event, 10}, 2_000
+    assert_receive {:event, %Etl.Message{data: 2, metadata: %{partition: 0}}}, 2_000
+    assert_receive {:event, %Etl.Message{data: 4, metadata: %{partition: 0}}}, 2_000
+    assert_receive {:event, %Etl.Message{data: 6, metadata: %{partition: 1}}}, 2_000
+    assert_receive {:event, %Etl.Message{data: 8, metadata: %{partition: 1}}}, 2_000
+    assert_receive {:event, %Etl.Message{data: 10, metadata: %{partition: 0}}}, 2_000
   end
 
   test "etl can support custom partitions" do
@@ -133,6 +138,7 @@ defmodule EtlTest do
       Etl.run(
         source: %Etl.TestSource{pid: test, partitions: [:odd, :even], hash: hash},
         transformations: [
+          %Etl.Test.PartitionTracker{},
           %Etl.Test.Transform.Custom{function: fn x -> {:ok, x * 2} end}
         ],
         destination: %Etl.TestDestination{pid: test},
@@ -144,7 +150,12 @@ defmodule EtlTest do
 
     :ok = Etl.await(etl, delay: 100, timeout: 5_000)
 
-    assert_receive {:event, 10}, 2_000
+
+    assert_receive {:event, %Etl.Message{data: 2, metadata: %{partition: :odd}}}, 2_000
+    assert_receive {:event, %Etl.Message{data: 4, metadata: %{partition: :even}}}, 2_000
+    assert_receive {:event, %Etl.Message{data: 6, metadata: %{partition: :odd}}}, 2_000
+    assert_receive {:event, %Etl.Message{data: 8, metadata: %{partition: :even}}}, 2_000
+    assert_receive {:event, %Etl.Message{data: 10, metadata: %{partition: :odd}}}, 2_000
   end
 
   defp status(i) when rem(i, 2) == 0, do: :ok
