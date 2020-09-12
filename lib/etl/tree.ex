@@ -33,7 +33,7 @@ defmodule Etl.Tree do
   end
 
   defp generate_tree(pid) do
-    state = :sys.get_state(pid) |> IO.inspect(label: "state")
+    state = :sys.get_state(pid)
     partitions = partition_info(state)
 
     subscribers =

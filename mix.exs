@@ -17,7 +17,10 @@ defmodule Etl.MixProject do
       homepage: @github,
       docs: docs(),
       elixirc_paths: elixirc_paths(Mix.env()),
-      dialyzer: [plt_file: {:no_warn, ".dialyzer/#{System.version()}.plt"}]
+      dialyzer: [
+        plt_file: {:no_warn, ".dialyzer/#{System.version()}.plt"},
+        plt_add_apps: [:mix]
+      ]
     ]
   end
 
