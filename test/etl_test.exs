@@ -45,118 +45,104 @@ defmodule EtlTest do
 
     %{pids: [producer | _]} =
       etl =
-      Etl.run(
-        source: %Etl.TestSource{pid: test},
-        transformations: [
-          %Etl.Test.Transform.Upcase{}
-        ],
-        destination: %Etl.TestDestination{pid: test},
-        dynamic_supervisor: @supervisor
-      )
+      Etl.pipeline(%Etl.Support.Producer{pid: test}, dynamic_supervisor: @supervisor)
+      |> Etl.to(%Etl.Support.Consumer{pid: test})
+      |> Etl.run()
 
     events = Enum.map(1..2, fn i -> "event-#{i}" end)
 
-    Etl.TestSource.send_events(producer, events)
-    Etl.TestSource.stop(producer)
+    Etl.Support.Producer.send_events(producer, events)
+    Etl.Support.Producer.stop(producer)
 
     :ok = Etl.await(etl, delay: 100, timeout: 5_000)
 
     Enum.each(events, fn event ->
-      transformed_event = String.upcase(event)
-      assert_receive {:data, ^transformed_event}, 1_000
+      assert_receive {:data, ^event}, 1_000
     end)
 
-    assert_receive %{success: 2, fail: 0}, 2_000
+    assert_receive {:ack, %{success: 2, fail: 0}}, 2_000
   end
 
-  test "etl can support transformations that are stages" do
+  test "etl can run stages as normal child_specs" do
     test = self()
 
     %{pids: [producer | _]} =
       etl =
-      Etl.run(
-        source: %Etl.TestSource{pid: test},
-        transformations: [
-          %Etl.Test.Transform.Custom{function: fn x -> ok(x * 2) end},
-          %Etl.Test.Transform.Custom{function: fn x -> ok(x + 1) end},
-          %Etl.Test.Transform.Sum{},
-          %Etl.Test.Transform.Custom{function: fn x -> ok(x - 1) end}
-        ],
-        destination: %Etl.TestDestination{pid: test},
-        dynamic_supervisor: @supervisor
-      )
+      Etl.pipeline({Etl.Support.Producer.Stage, %Etl.Support.Producer{pid: test}}, dynamic_supervisor: @supervisor)
+      |> Etl.to(%Etl.Support.Consumer{pid: test})
+      |> Etl.run()
 
-    Etl.TestSource.send_events(producer, [1, 2, 3, 4, 5])
-    Etl.TestSource.send_events(producer, [6, 7, 8, 9, 10])
-    Etl.TestSource.stop(producer)
+    events = Enum.map(1..2, fn i -> "event-#{i}" end)
+
+    Etl.Support.Producer.send_events(producer, events)
+    Etl.Support.Producer.stop(producer)
+
+    :ok = Etl.await(etl, delay: 100, timeout: 5_000)
+
+    Enum.each(events, fn event ->
+      assert_receive {:data, ^event}, 1_000
+    end)
+
+    assert_receive {:ack, %{success: 2, fail: 0}}, 2_000
+  end
+
+  test "etl can support functions that are stages" do
+    test = self()
+
+    %{pids: [producer | _]} =
+      etl =
+      Etl.pipeline(%Etl.Support.Producer{pid: test}, dynamic_supervisor: @supervisor)
+      |> Etl.function(fn x -> ok(x * 2) end)
+      |> Etl.function(fn x -> ok(x + 1) end)
+      |> Etl.to(Etl.Test.Transform.Sum.Stage)
+      |> Etl.function(fn x -> ok(x - 1) end)
+      |> Etl.to(%Etl.Support.Consumer{pid: test})
+      |> Etl.run()
+
+    Etl.Support.Producer.send_events(producer, [1, 2, 3, 4, 5])
+    Etl.Support.Producer.send_events(producer, [6, 7, 8, 9, 10])
+    Etl.Support.Producer.stop(producer)
 
     :ok = Etl.await(etl, delay: 100, timeout: 5_000)
 
     assert_receive {:data, 119}, 2_000
-    assert_receive %{success: 1, fail: 0}, 2_000
+    assert_receive {:ack, %{success: 1, fail: 0}}, 2_000
   end
 
-  test "etl can support simple number of partitions" do
-    test = self()
 
-    %{pids: [producer | _]} =
-      etl =
-      Etl.run(
-        source: %Etl.TestSource{pid: test, partitions: 2},
-        transformations: [
-          %Etl.Test.PartitionTracker{},
-          %Etl.Test.Transform.Custom{function: fn x -> {:ok, x * 2} end}
-        ],
-        destination: %Etl.TestDestination{pid: test},
-        dynamic_supervisor: @supervisor
-      )
+  # test "etl can support custom partitions" do
+  #   test = self()
 
-    Etl.TestSource.send_events(producer, [1, 2, 3, 4, 5])
-    Etl.TestSource.stop(producer)
+  #   hash = fn event ->
+  #     case rem(event.data, 2) do
+  #       0 -> {event, :even}
+  #       1 -> {event, :odd}
+  #     end
+  #   end
 
-    :ok = Etl.await(etl, delay: 100, timeout: 5_000)
+  #   %{pids: [producer | _]} =
+  #     etl =
+  #     Etl.run(
+  #       source: %Etl.TestSource{pid: test, partitions: [:odd, :even], hash: hash},
+  #       transformations: [
+  #         %Etl.Test.PartitionTracker{},
+  #         %Etl.Test.Transform.Custom{function: fn x -> {:ok, x * 2} end}
+  #       ],
+  #       destination: %Etl.TestDestination{pid: test},
+  #       dynamic_supervisor: @supervisor
+  #     )
 
-    assert_receive {:event, %Etl.Message{data: 2, metadata: %{partition: 0}}}, 2_000
-    assert_receive {:event, %Etl.Message{data: 4, metadata: %{partition: 0}}}, 2_000
-    assert_receive {:event, %Etl.Message{data: 6, metadata: %{partition: 1}}}, 2_000
-    assert_receive {:event, %Etl.Message{data: 8, metadata: %{partition: 1}}}, 2_000
-    assert_receive {:event, %Etl.Message{data: 10, metadata: %{partition: 0}}}, 2_000
-  end
+  #   Etl.TestSource.send_events(producer, [1, 2, 3, 4, 5])
+  #   Etl.TestSource.stop(producer)
 
-  test "etl can support custom partitions" do
-    test = self()
+  #   :ok = Etl.await(etl, delay: 100, timeout: 5_000)
 
-    hash = fn event ->
-      case rem(event.data, 2) do
-        0 -> {event, :even}
-        1 -> {event, :odd}
-      end
-    end
-
-    %{pids: [producer | _]} =
-      etl =
-      Etl.run(
-        source: %Etl.TestSource{pid: test, partitions: [:odd, :even], hash: hash},
-        transformations: [
-          %Etl.Test.PartitionTracker{},
-          %Etl.Test.Transform.Custom{function: fn x -> {:ok, x * 2} end}
-        ],
-        destination: %Etl.TestDestination{pid: test},
-        dynamic_supervisor: @supervisor
-      )
-
-    Etl.TestSource.send_events(producer, [1, 2, 3, 4, 5])
-    Etl.TestSource.stop(producer)
-
-    :ok = Etl.await(etl, delay: 100, timeout: 5_000)
-
-
-    assert_receive {:event, %Etl.Message{data: 2, metadata: %{partition: :odd}}}, 2_000
-    assert_receive {:event, %Etl.Message{data: 4, metadata: %{partition: :even}}}, 2_000
-    assert_receive {:event, %Etl.Message{data: 6, metadata: %{partition: :odd}}}, 2_000
-    assert_receive {:event, %Etl.Message{data: 8, metadata: %{partition: :even}}}, 2_000
-    assert_receive {:event, %Etl.Message{data: 10, metadata: %{partition: :odd}}}, 2_000
-  end
+  #   assert_receive {:event, %Etl.Message{data: 2, metadata: %{partition: :odd}}}, 2_000
+  #   assert_receive {:event, %Etl.Message{data: 4, metadata: %{partition: :even}}}, 2_000
+  #   assert_receive {:event, %Etl.Message{data: 6, metadata: %{partition: :odd}}}, 2_000
+  #   assert_receive {:event, %Etl.Message{data: 8, metadata: %{partition: :even}}}, 2_000
+  #   assert_receive {:event, %Etl.Message{data: 10, metadata: %{partition: :odd}}}, 2_000
+  # end
 
   defp status(i) when rem(i, 2) == 0, do: :ok
   defp status(_), do: {:error, "test"}

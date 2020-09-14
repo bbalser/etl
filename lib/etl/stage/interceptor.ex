@@ -4,7 +4,15 @@ defmodule Etl.Stage.Interceptor do
   @types [:producer, :producer_consumer, :consumer]
 
   def start_link(opts) do
-    GenStage.start_link(__MODULE__, opts)
+    args = Keyword.get(opts, :args, [])
+
+    server_opts =
+      case Keyword.keyword?(args) do
+        true -> Keyword.take(args, [:name])
+        false -> []
+      end
+
+    GenStage.start_link(__MODULE__, opts, server_opts)
   end
 
   def init(opts) do
@@ -13,7 +21,15 @@ defmodule Etl.Stage.Interceptor do
     post_process = Keyword.get(opts, :post_process, fn x -> x end)
     args = Keyword.get(opts, :args, [])
 
-    config = %{stage: stage, state: %{}, type: nil, post_process: post_process, pre_process: pre_process, init_opts: []}
+    config = %{
+      stage: stage,
+      state: %{},
+      type: nil,
+      post_process: post_process,
+      pre_process: pre_process,
+      init_opts: [],
+      dispatcher: Keyword.get(opts, :dispatcher)
+    }
 
     stage.init(args)
     |> wrap_response([], config)
@@ -128,10 +144,13 @@ defmodule Etl.Stage.Interceptor do
   end
 
   defp wrap_response({type, state}, _events, config, _post_processor) when type in @types do
-    {type, %{config | state: state, type: type}}
+    overriding_opts = Map.take(config, [:dispatcher]) |> Enum.reject(fn {_, v} -> v == nil end)
+    {type, %{config | state: state, type: type}, overriding_opts}
   end
 
   defp wrap_response({type, state, opts}, _events, config, _post_processor) when type in @types do
+    overriding_opts = Map.take(config, [:dispatcher]) |> Enum.reject(fn {_, v} -> v == nil end)
+    opts = Keyword.merge(opts, overriding_opts)
     {type, %{config | state: state, type: type, init_opts: opts}, opts}
   end
 

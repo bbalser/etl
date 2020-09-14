@@ -1,27 +1,26 @@
 defmodule Etl.Tree do
-  defmodule Stage do
+  defmodule Vertex do
     @type t :: %__MODULE__{
             pid: pid(),
             type: :producer | :producer_consumer | :consumer,
-            subscribers: [t],
-            partition: term(),
             mod: module(),
             dispatcher: module(),
-            buffer_size: non_neg_integer()
+            buffer_size: non_neg_integer(),
+            name: atom()
           }
 
-    defstruct [:pid, :type, :subscribers, :partition, :mod, :dispatcher, :buffer_size]
+    defstruct [:pid, :type, :subscribers, :partition, :mod, :dispatcher, :buffer_size, :name]
   end
 
   def discover(%Etl{pids: [producer | _]}) do
-    generate_tree(producer)
+    add_to_graph(Graph.new(type: :directed), producer)
   end
 
   def discover(pid) when is_pid(pid) do
-    generate_tree(pid)
+    add_to_graph(Graph.new(type: :directed), pid)
   end
 
-  def print(%Stage{} = stage) do
+  def print(%Vertex{} = stage) do
     stage
     |> List.wrap()
     |> Mix.Utils.print_tree(&format/1, format: "pretty")
@@ -32,26 +31,29 @@ defmodule Etl.Tree do
     |> print()
   end
 
-  defp generate_tree(pid) do
+  defp add_to_graph(graph, pid) do
     state = :sys.get_state(pid)
     partitions = partition_info(state)
 
-    subscribers =
-      state.consumers
-      |> Enum.map(fn {_, {pid, _}} -> pid end)
-      |> Enum.map(&generate_tree/1)
-      |> Enum.map(fn sub ->
-        %{sub | partition: Map.get(partitions, sub.pid)}
-      end)
-
-    %Stage{
+    vertex = %Vertex{
       pid: pid,
       type: state.type,
-      subscribers: subscribers,
       mod: module(state),
       dispatcher: state.dispatcher_mod,
-      buffer_size: buffer_size(state.buffer)
+      buffer_size: buffer_size(state.buffer),
+      name: name(pid)
     }
+
+    graph =
+      state.consumers
+      |> Enum.map(fn {_, {pid, _}} -> pid end)
+      |> Enum.reduce(graph, fn next_pid, graph ->
+        {graph, next_vertex} = add_to_graph(graph, next_pid)
+        partition = Map.get(partitions, next_vertex.pid)
+        Graph.add_edge(graph, vertex, next_vertex, label: partition)
+      end)
+
+    {graph, vertex}
   end
 
   defp partition_info(%{dispatcher_mod: GenStage.PartitionDispatcher, dispatcher_state: state}) do
@@ -78,7 +80,7 @@ defmodule Etl.Tree do
     GenStage.Buffer.estimate_size(buffer)
   end
 
-  defp format(%Stage{} = stage) do
+  defp format(%Vertex{} = stage) do
     string =
       [
         format_type(stage.type),
@@ -121,5 +123,12 @@ defmodule Etl.Tree do
 
   defp format_dispatcher(dispatcher) do
     inspect(dispatcher)
+  end
+
+  defp name(pid) do
+    case Process.info(pid, :registered_name) do
+      {:registered_name, []} -> nil
+      {:registered_name, name} -> name
+    end
   end
 end

@@ -36,6 +36,8 @@ defmodule Etl.MixProject do
       {:gen_stage, "~> 1.0"},
       {:brex_result, "~> 0.4.0"},
       {:timex, "~> 3.6"},
+      {:libgraph, "~> 0.13.3"},
+      {:uuid, "~> 1.1"},
       {:dialyxir, "~> 1.0.0", only: [:dev], runtime: false},
       {:ex_doc, "~> 0.22.1", only: [:dev]},
       {:placebo, "~> 2.0.0-rc.2", only: [:dev, :test]},

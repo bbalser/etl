@@ -1,4 +1,4 @@
-defmodule Etl.Transform.Stage do
+defmodule Etl.Functions.Stage do
   use GenStage
   import Brex.Result.Mappers, only: [reduce_while_success: 3]
 
