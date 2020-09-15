@@ -24,6 +24,24 @@ defmodule Etl.Pipeline do
     end)
   end
 
+  def add_function(%{steps: [head | tail]} = pipeline, fun) do
+    case head.child_spec do
+      %{start: {Etl.Functions.Stage, _, [opts]}} ->
+        opts =
+          Keyword.update!(opts, :functions, fn funs ->
+            funs ++ [fun]
+          end)
+
+        new_child_spec = {Etl.Functions.Stage, opts} |> to_child_spec(pipeline)
+        new_step = %{head | child_spec: new_child_spec}
+        %{pipeline | steps: [new_step | tail]}
+
+      _ ->
+        stage = {Etl.Functions.Stage, context: pipeline.context, functions: [fun]}
+        add_stage(pipeline, stage)
+    end
+  end
+
   def set_partitions(%{steps: [step | rest]} = pipeline, dispatcher_opts) do
     step = %{step | dispatcher: {@partition_dispatcher, dispatcher_opts}}
     %{pipeline | steps: [step | rest]}

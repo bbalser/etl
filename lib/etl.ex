@@ -25,8 +25,7 @@ defmodule Etl do
   end
 
   def function(pipeline, fun) when is_function(fun, 1) do
-    spec = {Etl.Functions.Stage, context: pipeline.context, functions: [fun]}
-    to(pipeline, spec)
+    Pipeline.add_function(pipeline, fun)
   end
 
   def partition(pipeline, opts) do
