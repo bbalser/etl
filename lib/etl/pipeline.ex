@@ -19,7 +19,6 @@ defmodule Etl.Pipeline do
   @partition_dispatcher GenStage.PartitionDispatcher
   @broadcast_dispatcher GenStage.BroadcastDispatcher
 
-  @spec new(Keyword.t()) :: Etl.Pipeline.t()
   def new(opts \\ []) do
     %__MODULE__{
       context: %Etl.Context{
@@ -30,7 +29,6 @@ defmodule Etl.Pipeline do
     }
   end
 
-  @spec add_stage(t(), Etl.stage(), keyword()) :: t()
   def add_stage(pipeline, stage, opts) do
     Map.update!(pipeline, :steps, fn steps ->
       step = %Step{child_spec: to_child_spec(stage, pipeline), opts: opts}

@@ -47,6 +47,7 @@ defmodule Etl do
     Etl.Pipeline.set_partitions(pipeline, opts)
   end
 
+  @spec broadcast(Etl.Pipeline.t(), keyword) :: Etl.Pipeline.t()
   def broadcast(pipeline, opts \\ []) do
     Etl.Pipeline.set_broadcast(pipeline, opts)
   end
