@@ -1,11 +1,23 @@
 defmodule Etl.Pipeline do
+  @type t :: %__MODULE__{
+    context: Etl.Context.t(),
+    steps: [Step.t()]
+  }
+
   defstruct context: nil, steps: []
 
   defmodule Step do
-    defstruct [:child_spec, :dispatcher]
+    @type t :: %__MODULE__{
+      child_spec: Supervisor.child_spec(),
+      opts: keyword(),
+      dispatcher: {module(), keyword()}
+    }
+
+    defstruct [:child_spec, :opts, :dispatcher]
   end
 
   @partition_dispatcher GenStage.PartitionDispatcher
+  @broadcast_dispatcher GenStage.BroadcastDispatcher
 
   def new(opts \\ []) do
     %__MODULE__{
@@ -17,9 +29,9 @@ defmodule Etl.Pipeline do
     }
   end
 
-  def add_stage(pipeline, stage) do
+  def add_stage(pipeline, stage, opts) do
     Map.update!(pipeline, :steps, fn steps ->
-      step = %Step{child_spec: to_child_spec(stage, pipeline)}
+      step = %Step{child_spec: to_child_spec(stage, pipeline), opts: opts}
       [step | steps]
     end)
   end
@@ -38,12 +50,17 @@ defmodule Etl.Pipeline do
 
       _ ->
         stage = {Etl.Functions.Stage, context: pipeline.context, functions: [fun]}
-        add_stage(pipeline, stage)
+        add_stage(pipeline, stage, [])
     end
   end
 
   def set_partitions(%{steps: [step | rest]} = pipeline, dispatcher_opts) do
     step = %{step | dispatcher: {@partition_dispatcher, dispatcher_opts}}
+    %{pipeline | steps: [step | rest]}
+  end
+
+  def set_broadcast(%{steps: [step | rest]} = pipeline, broadcast_opts) do
+    step = %{step | dispatcher: {@broadcast_dispatcher, broadcast_opts}}
     %{pipeline | steps: [step | rest]}
   end
 

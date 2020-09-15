@@ -109,41 +109,6 @@ defmodule EtlTest do
     assert_receive {:ack, %{success: 1, fail: 0}}, 2_000
   end
 
-
-  # test "etl can support custom partitions" do
-  #   test = self()
-
-  #   hash = fn event ->
-  #     case rem(event.data, 2) do
-  #       0 -> {event, :even}
-  #       1 -> {event, :odd}
-  #     end
-  #   end
-
-  #   %{pids: [producer | _]} =
-  #     etl =
-  #     Etl.run(
-  #       source: %Etl.TestSource{pid: test, partitions: [:odd, :even], hash: hash},
-  #       transformations: [
-  #         %Etl.Test.PartitionTracker{},
-  #         %Etl.Test.Transform.Custom{function: fn x -> {:ok, x * 2} end}
-  #       ],
-  #       destination: %Etl.TestDestination{pid: test},
-  #       dynamic_supervisor: @supervisor
-  #     )
-
-  #   Etl.TestSource.send_events(producer, [1, 2, 3, 4, 5])
-  #   Etl.TestSource.stop(producer)
-
-  #   :ok = Etl.await(etl, delay: 100, timeout: 5_000)
-
-  #   assert_receive {:event, %Etl.Message{data: 2, metadata: %{partition: :odd}}}, 2_000
-  #   assert_receive {:event, %Etl.Message{data: 4, metadata: %{partition: :even}}}, 2_000
-  #   assert_receive {:event, %Etl.Message{data: 6, metadata: %{partition: :odd}}}, 2_000
-  #   assert_receive {:event, %Etl.Message{data: 8, metadata: %{partition: :even}}}, 2_000
-  #   assert_receive {:event, %Etl.Message{data: 10, metadata: %{partition: :odd}}}, 2_000
-  # end
-
   defp status(i) when rem(i, 2) == 0, do: :ok
   defp status(_), do: {:error, "test"}
 end
