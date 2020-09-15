@@ -1,9 +1,9 @@
 defmodule Etl.Context do
   @type t :: %__MODULE__{
-          dictionary: Etl.Dictionary.t(),
+          dictionary: Etl.Dictionary.t() | nil,
           max_demand: pos_integer(),
           min_demand: pos_integer(),
-          error_handler: (event :: term(), reason :: term() -> no_return()),
+          error_handler: (event :: term(), reason :: term() -> no_return()) | nil,
           dynamic_supervisor: module()
         }
 
