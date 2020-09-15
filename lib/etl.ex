@@ -22,7 +22,7 @@ defmodule Etl do
   @spec pipeline(stage(), global_opts()) :: Etl.Pipeline.t()
   def pipeline(stage, opts \\ []) do
     Etl.Pipeline.new(opts)
-    |> to(stage)
+    |> Etl.Pipeline.add_stage(stage, [])
   end
 
   @spec to(Etl.Pipeline.t(), stage(), keyword()) :: Etl.Pipeline.t()

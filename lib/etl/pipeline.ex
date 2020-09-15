@@ -1,11 +1,4 @@
 defmodule Etl.Pipeline do
-  @type t :: %__MODULE__{
-          context: Etl.Context.t(),
-          steps: [Step.t()]
-        }
-
-  defstruct context: nil, steps: []
-
   defmodule Step do
     @type t :: %__MODULE__{
             child_spec: Supervisor.child_spec(),
@@ -16,9 +9,17 @@ defmodule Etl.Pipeline do
     defstruct [:child_spec, :opts, :dispatcher]
   end
 
+  @type t :: %__MODULE__{
+          context: Etl.Context.t(),
+          steps: list()
+        }
+
+  defstruct context: nil, steps: []
+
   @partition_dispatcher GenStage.PartitionDispatcher
   @broadcast_dispatcher GenStage.BroadcastDispatcher
 
+  @spec new(Keyword.t()) :: Etl.Pipeline.t()
   def new(opts \\ []) do
     %__MODULE__{
       context: %Etl.Context{
@@ -29,6 +30,7 @@ defmodule Etl.Pipeline do
     }
   end
 
+  @spec add_stage(t(), Etl.stage(), keyword()) :: t()
   def add_stage(pipeline, stage, opts) do
     Map.update!(pipeline, :steps, fn steps ->
       step = %Step{child_spec: to_child_spec(stage, pipeline), opts: opts}
@@ -69,12 +71,7 @@ defmodule Etl.Pipeline do
   end
 
   defp to_child_spec(stage, pipeline) do
-    child_spec =
-      case Etl.Stage.impl_for(stage) do
-        nil -> stage
-        _ -> Etl.Stage.spec(stage, pipeline.context)
-      end
-
-    Supervisor.child_spec(child_spec, [])
+    Etl.Stage.spec(stage, pipeline.context)
+    |> Supervisor.child_spec([])
   end
 end

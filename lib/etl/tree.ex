@@ -27,8 +27,8 @@ defmodule Etl.Tree do
   end
 
   def print(stages) do
-    discover(stages)
-    |> print()
+    {_graph, vertex} = discover(stages)
+    print(vertex)
   end
 
   defp add_to_graph(graph, pid) do
