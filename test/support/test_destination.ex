@@ -1,5 +1,5 @@
 defmodule Etl.TestDestination do
-  defstruct [:pid, :send]
+  defstruct [:pid]
 
   defimpl Etl.Destination do
     def stages(t, _context) do

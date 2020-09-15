@@ -145,7 +145,7 @@ defmodule Etl.Stage.Interceptor do
 
   defp wrap_response({type, state}, _events, config, _post_processor) when type in @types do
     overriding_opts = Map.take(config, [:dispatcher]) |> Enum.reject(fn {_, v} -> v == nil end)
-    {type, %{config | state: state, type: type}, overriding_opts}
+    {type, %{config | state: state, type: type, init_opts: overriding_opts}, overriding_opts}
   end
 
   defp wrap_response({type, state, opts}, _events, config, _post_processor) when type in @types do
