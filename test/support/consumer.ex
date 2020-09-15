@@ -21,7 +21,6 @@ defmodule Etl.Support.Consumer do
 
       {:noreply, [], state}
     end
-
   end
 
   defimpl Etl.Stage do

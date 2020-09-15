@@ -1,17 +1,17 @@
 defmodule Etl.Pipeline do
   @type t :: %__MODULE__{
-    context: Etl.Context.t(),
-    steps: [Step.t()]
-  }
+          context: Etl.Context.t(),
+          steps: [Step.t()]
+        }
 
   defstruct context: nil, steps: []
 
   defmodule Step do
     @type t :: %__MODULE__{
-      child_spec: Supervisor.child_spec(),
-      opts: keyword(),
-      dispatcher: {module(), keyword()}
-    }
+            child_spec: Supervisor.child_spec(),
+            opts: keyword(),
+            dispatcher: {module(), keyword()}
+          }
 
     defstruct [:child_spec, :opts, :dispatcher]
   end

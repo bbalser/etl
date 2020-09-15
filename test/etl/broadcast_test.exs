@@ -29,5 +29,4 @@ defmodule Etl.BroadcastTest do
     assert_receive {:data, 5}
     assert_receive {:data, 5}
   end
-
 end
