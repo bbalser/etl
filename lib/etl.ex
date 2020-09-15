@@ -1,70 +1,63 @@
 defmodule Etl do
   require Logger
-  @type stage :: Supervisor.child_spec() | {module(), arg :: term()} | module()
+  @type stage :: Supervisor.child_spec() | {module(), arg :: term()} | module() | Etl.Stage.t()
   @type dictionary :: term()
 
   @type t :: %__MODULE__{
-          source: Etl.Source.t(),
-          destination: Etl.Destination.t(),
-          transformations: [Etl.Transformation.t()],
           stages: [Etl.stage()],
           pids: [pid],
           subscriptions: [GenStage.subscription_tag()]
         }
 
-  defstruct source: nil,
-            destination: nil,
-            transformations: [],
-            stages: [],
+  defstruct stages: [],
             pids: [],
             subscriptions: []
 
-  @type run_opts :: [
-          source: Etl.Source.t(),
-          transformations: [Etl.Transformation.t()],
-          destination: Etl.Destination.t(),
-          dictionary: Etl.Dictionary.t(),
-          error_handler: (event :: term(), reason :: term() -> no_return()),
+  @type global_opts :: [
+          min_demand: pos_integer(),
           max_demand: pos_integer(),
-          min_demand: pos_integer()
+          dynamic_supervisor: module()
         ]
 
-  @spec run(run_opts) :: t
-  def run(opts) do
-    source = Keyword.fetch!(opts, :source)
-    destination = Keyword.fetch!(opts, :destination)
-    dictionary = Keyword.get(opts, :dictionary)
-    transformations = Keyword.get(opts, :transformations, [])
+  @spec pipeline(stage(), global_opts()) :: Etl.Pipeline.t()
+  def pipeline(stage, opts \\ []) do
+    Etl.Pipeline.new(opts)
+    |> Etl.Pipeline.add_stage(stage, [])
+  end
 
-    error_handler =
-      Keyword.get(opts, :error_handler, fn event, reason ->
-        Logger.debug(fn ->
-          "Event #{inspect(event)} has been evicted, reason: #{inspect(reason)}"
-        end)
-      end)
+  @spec to(Etl.Pipeline.t(), stage(), keyword()) :: Etl.Pipeline.t()
+  def to(pipeline, stage, opts \\ []) do
+    Etl.Pipeline.add_stage(pipeline, stage, opts)
+  end
 
-    context = %Etl.Context{
-      dictionary: dictionary,
-      min_demand: Keyword.get(opts, :min_demand, 500),
-      max_demand: Keyword.get(opts, :max_demand, 1000),
-      error_handler: error_handler,
-      dynamic_supervisor: Keyword.get(opts, :dynamic_supervisor, Etl.DynamicSupervisor)
-    }
+  @spec function(Etl.Pipeline.t(), (Etl.Message.data() -> {:ok, Etl.Message.data()} | {:error, reason :: term()})) ::
+          Etl.Pipeline.t()
+  def function(pipeline, fun) when is_function(fun, 1) do
+    Etl.Pipeline.add_function(pipeline, fun)
+  end
 
-    stages =
-      source_stages(source, context) ++
-        transformation_stages(transformations, context) ++
-        destination_stages(destination, context)
+  @type partition_opts :: [
+          partitions: pos_integer() | list(),
+          hash: (Etl.Message.t() -> {Etl.Message.t(), partition :: term})
+        ]
 
-    {pids, subscriptions} = Etl.Initializer.start(stages, context)
+  @spec partition(Etl.Pipeline.t(), partition_opts) :: Etl.Pipeline.t()
+  def partition(pipeline, opts) do
+    Keyword.fetch!(opts, :partitions)
+    Etl.Pipeline.set_partitions(pipeline, opts)
+  end
 
-    %__MODULE__{
-      source: source,
-      destination: destination,
-      stages: stages,
-      pids: pids,
-      subscriptions: subscriptions
-    }
+  @spec broadcast(Etl.Pipeline.t(), keyword) :: Etl.Pipeline.t()
+  def broadcast(pipeline, opts \\ []) do
+    Etl.Pipeline.set_broadcast(pipeline, opts)
+  end
+
+  @spec run(Etl.Pipeline.t()) :: t
+  def run(%Etl.Pipeline{} = pipeline) do
+    Graph.new(type: :directed)
+    |> start_steps(Etl.Pipeline.steps(pipeline), pipeline.context)
+    |> subscribe_stages(pipeline)
+    |> create_struct()
   end
 
   @spec await(t) :: :ok | :timeout
@@ -87,6 +80,85 @@ defmodule Etl do
     |> Enum.each(fn {{mod, ref}, pass, fail} -> mod.ack(ref, pass, fail) end)
   end
 
+  defp start_steps(graph, [], _context), do: graph
+
+  defp start_steps(graph, [step | remaining], context) do
+    starter = &start_step(&1, context, remaining == [])
+
+    case tails(graph) do
+      [] ->
+        {:ok, pid} = starter.(step)
+        Graph.add_vertex(graph, pid, step: step, subscription_opts: get_in(step.opts, [:subscription_opts]))
+
+      tails ->
+        Enum.reduce(tails, graph, fn tail, g ->
+          add_to_tail(g, step, tail, starter)
+        end)
+    end
+    |> start_steps(remaining, context)
+  end
+
+  defp add_to_tail(graph, step, tail, starter) do
+    subscription_opts = get_in(step.opts, [:subscription_opts]) || []
+
+    case GenStage.call(tail, :"$dispatcher") do
+      {GenStage.PartitionDispatcher, opts} ->
+        partitions = Keyword.fetch!(opts, :partitions) |> to_list()
+
+        partitions
+        |> Enum.reduce(graph, fn partition, g ->
+          subscription_opts = Keyword.put(subscription_opts, :partition, partition)
+
+          {:ok, pid} = starter.(step)
+          add_step_to_graph(g, pid, tail, step: step, subscription_opts: subscription_opts)
+        end)
+
+      _ ->
+        count = get_in(step.opts, [:count]) || 1
+
+        Enum.reduce(1..count, graph, fn _, g ->
+          {:ok, pid} = starter.(step)
+          add_step_to_graph(g, pid, tail, step: step, subscription_opts: subscription_opts)
+        end)
+    end
+  end
+
+  defp subscribe_stages(graph, pipeline) do
+    Graph.postorder(graph)
+    |> Enum.reduce(graph, fn pid, g ->
+      v_subscription_opts = Graph.vertex_labels(g, pid) |> Keyword.get(:subscription_opts, [])
+
+      Graph.in_neighbors(g, pid)
+      |> Enum.reduce(g, fn neighbor, g ->
+        subscription_opts =
+          [
+            to: neighbor,
+            min_demand: pipeline.context.min_demand,
+            max_demand: pipeline.context.max_demand
+          ]
+          |> Keyword.merge(v_subscription_opts)
+
+        {:ok, sub} = GenStage.sync_subscribe(pid, subscription_opts)
+
+        Graph.label_vertex(g, pid, sub: sub)
+      end)
+    end)
+  end
+
+  defp create_struct(graph) do
+    Graph.postorder(graph)
+    |> Enum.reduce(%__MODULE__{}, fn pid, etl ->
+      labels = Graph.vertex_labels(graph, pid)
+
+      etl
+      |> Map.update!(:pids, fn pids -> [pid | pids] end)
+      |> Map.update!(:subscriptions, fn subs ->
+        Keyword.get_values(labels, :sub) ++ subs
+      end)
+      |> Map.update!(:stages, fn stages -> [Keyword.get(labels, :step) | stages] end)
+    end)
+  end
+
   defp group_by_status({key, messages}) do
     {pass, fail} =
       Enum.reduce(messages, {[], []}, fn
@@ -98,48 +170,6 @@ defmodule Etl do
       end)
 
     {key, Enum.reverse(pass), Enum.reverse(fail)}
-  end
-
-  defp source_stages(source, context) do
-    source
-    |> Etl.Source.stages(context)
-    |> Enum.map(&intercept/1)
-  end
-
-  defp transformation_stages(transformations, context) do
-    transformations
-    |> Enum.map(fn transformation -> {Etl.Transformation.stage_or_function(transformation), transformation} end)
-    |> Enum.chunk_by(fn {type, _} -> type end)
-    |> Enum.map(&map_functions_or_stages(&1, context))
-    |> List.flatten()
-    |> Enum.map(&intercept/1)
-  end
-
-  defp destination_stages(destination, context) do
-    post_processor = fn events -> Etl.ack(events) end
-
-    {last, list} =
-      destination
-      |> Etl.Destination.stages(context)
-      |> List.pop_at(-1)
-
-    Enum.map(list, &intercept/1) ++ [intercept(last, post_process: post_processor)]
-  end
-
-  defp map_functions_or_stages([{:function, _} | _] = chunk, context) do
-    Enum.map(chunk, fn {_type, transformation} -> transformation end)
-    |> create_transformation_function_stage(context)
-  end
-
-  defp map_functions_or_stages([{:stage, _} | _] = chunk, context) do
-    Enum.reduce(chunk, [], fn {_type, transformation}, buffer ->
-      buffer ++ Etl.Transformation.stages(transformation, context)
-    end)
-  end
-
-  defp create_transformation_function_stage(transformations, context) do
-    functions = Enum.map(transformations, &Etl.Transformation.function(&1, context))
-    [{Etl.Transform.Stage, functions: functions, context: context}]
   end
 
   defp do_await(_etl, _delay, timeout, elapsed) when elapsed >= timeout do
@@ -157,15 +187,36 @@ defmodule Etl do
     end
   end
 
-  defp intercept(child_spec, opts \\ [])
-
-  defp intercept({module, args}, opts) do
-    interceptor_opts = Keyword.merge(opts, stage: module, args: args)
-    {Etl.Stage.Interceptor, interceptor_opts}
+  defp intercept(%{start: {module, function, [args]}} = child_spec, opts) do
+    dispatcher = Keyword.get(opts, :dispatcher)
+    interceptor_args = Keyword.merge(opts, stage: module, args: args, dispatcher: dispatcher)
+    %{child_spec | start: {Etl.Stage.Interceptor, function, [interceptor_args]}}
   end
 
-  defp intercept(module, opts) do
-    interceptor_opts = Keyword.merge(opts, stage: module)
-    {Etl.Stage.Interceptor, interceptor_opts}
+  defp tails(graph) do
+    graph
+    |> Graph.vertices()
+    |> Enum.filter(fn v -> Graph.out_degree(graph, v) == 0 end)
+  end
+
+  defp to_list(list) when is_list(list), do: list
+  defp to_list(integer) when is_integer(integer), do: 0..(integer - 1)
+
+  defp add_step_to_graph(graph, vertex, from, labels) do
+    graph
+    |> Graph.add_vertex(vertex, labels)
+    |> Graph.add_edge(from, vertex)
+  end
+
+  defp start_step(step, context, last_step) do
+    interceptor_opts =
+      case last_step do
+        true -> [post_process: &Etl.ack/1]
+        false -> []
+      end
+      |> Keyword.merge(dispatcher: step.dispatcher)
+
+    intercepted_child_spec = intercept(step.child_spec, interceptor_opts)
+    DynamicSupervisor.start_child(context.dynamic_supervisor, intercepted_child_spec)
   end
 end

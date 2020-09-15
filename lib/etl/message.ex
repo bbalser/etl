@@ -1,6 +1,8 @@
 defmodule Etl.Message do
+  @type data :: term()
+
   @type t :: %__MODULE__{
-          data: term(),
+          data: data(),
           acknowledger: {module(), ack_ref :: term(), data :: term()},
           status: :ok | {:error, reason :: term()},
           metadata: %{optional(atom()) => term()}

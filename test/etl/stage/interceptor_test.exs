@@ -29,9 +29,9 @@ defmodule Etl.Stage.InterceptorTest do
 
     Etl.TestSource.send_events(producer, [1, 2, 3])
 
-    assert_receive {:event, 2}
-    assert_receive {:event, 4}
-    assert_receive {:event, 6}
+    assert_receive {:data, 2}
+    assert_receive {:data, 4}
+    assert_receive {:data, 6}
   end
 
   test "interceptor will send events to post process handler" do
@@ -50,9 +50,9 @@ defmodule Etl.Stage.InterceptorTest do
 
     Etl.TestSource.send_events(producer, [1, 2, 3])
 
-    assert_receive {:event, 2}
-    assert_receive {:event, 4}
-    assert_receive {:event, 6}
+    assert_receive {:data, 2}
+    assert_receive {:data, 4}
+    assert_receive {:data, 6}
 
     assert_receive {:post_process, 2}
     assert_receive {:post_process, 4}
@@ -79,8 +79,8 @@ defmodule Etl.Stage.InterceptorTest do
     assert_receive {:pre_process, 2}
     assert_receive {:pre_process, 3}
 
-    assert_receive {:event, 2}
-    assert_receive {:event, 4}
-    assert_receive {:event, 6}
+    assert_receive {:data, 2}
+    assert_receive {:data, 4}
+    assert_receive {:data, 6}
   end
 end
