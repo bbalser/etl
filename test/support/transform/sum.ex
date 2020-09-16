@@ -1,16 +1,4 @@
 defmodule Etl.Test.Transform.Sum do
-  defstruct []
-
-  defimpl Etl.Transformation do
-    use Etl.Transformation.Stage
-
-    def stages(_t, _context) do
-      [Etl.Test.Transform.Sum.Stage]
-    end
-  end
-end
-
-defmodule Etl.Test.Transform.Sum.Stage do
   use GenStage
 
   def start_link(opts) do

@@ -3,12 +3,6 @@ defmodule Etl.TestSource do
             partitions: [],
             hash: nil
 
-  defimpl Etl.Source do
-    def stages(t, _context) do
-      [{Etl.TestSource.Stage, t}]
-    end
-  end
-
   def send_events(pid, events) do
     GenStage.cast(pid, {:events, events})
   end
