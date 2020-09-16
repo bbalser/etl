@@ -94,7 +94,7 @@ defmodule EtlTest do
       Etl.pipeline(%Etl.Support.Producer{pid: test}, dynamic_supervisor: @supervisor)
       |> Etl.function(fn x -> ok(x * 2) end)
       |> Etl.function(fn x -> ok(x + 1) end)
-      |> Etl.to(Etl.Test.Transform.Sum.Stage)
+      |> Etl.to(Etl.Test.Transform.Sum)
       |> Etl.function(fn x -> ok(x - 1) end)
       |> Etl.to(%Etl.Support.Consumer{pid: test})
       |> Etl.run()

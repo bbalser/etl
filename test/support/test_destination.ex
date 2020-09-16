@@ -1,11 +1,5 @@
 defmodule Etl.TestDestination do
   defstruct [:pid]
-
-  defimpl Etl.Destination do
-    def stages(t, _context) do
-      [{Etl.TestDestination.Stage, t}]
-    end
-  end
 end
 
 defmodule Etl.TestDestination.Stage do
