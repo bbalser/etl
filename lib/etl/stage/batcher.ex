@@ -3,10 +3,10 @@ defmodule Etl.Stage.Batcher do
 
   defmodule State do
     defstruct batch_size: 100,
-      batch_timeout: 10_000,
-      timer: nil,
-      queue: nil,
-      partition: nil
+              batch_timeout: 10_000,
+              timer: nil,
+              queue: nil,
+              partition: nil
   end
 
   def start_link(opts) do
@@ -56,6 +56,7 @@ defmodule Etl.Stage.Batcher do
   end
 
   defp cancel_timer(nil), do: :ok
+
   defp cancel_timer(timer) do
     :erlang.cancel_timer(timer)
   end

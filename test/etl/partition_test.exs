@@ -14,7 +14,7 @@ defmodule Etl.PartitionTest do
 
     hash = fn event ->
       case event.data do
-        x when x in [1,2,3] -> {Etl.Message.add_metadata(event, :partition, 0), 0}
+        x when x in [1, 2, 3] -> {Etl.Message.add_metadata(event, :partition, 0), 0}
         _ -> {Etl.Message.add_metadata(event, :partition, 1), 1}
       end
     end
@@ -77,7 +77,7 @@ defmodule Etl.PartitionTest do
       partitions: 2,
       hash: fn event ->
         case event.data do
-          x when x in [1,2,3] -> {Etl.Message.add_metadata(event, :partition, 0), 0}
+          x when x in [1, 2, 3] -> {Etl.Message.add_metadata(event, :partition, 0), 0}
           _ -> {Etl.Message.add_metadata(event, :partition, 1), 1}
         end
       end
