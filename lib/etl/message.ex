@@ -18,6 +18,10 @@ defmodule Etl.Message do
     %Etl.Message{message | data: update_function.(data)}
   end
 
+  def add_metadata(%__MODULE__{metadata: metadata} = message, key, term) do
+    %Etl.Message{message | metadata: Map.put_new(metadata, key, term)}
+  end
+
   @spec mark_failed(t, reason :: term()) :: t
   def mark_failed(message, reason) do
     %Etl.Message{message | status: {:error, reason}}

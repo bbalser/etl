@@ -52,6 +52,11 @@ defmodule Etl do
     Etl.Pipeline.set_broadcast(pipeline, opts)
   end
 
+  @spec batch(Etl.Pipeline.t(), keyword) :: Etl.Pipeline.t()
+  def batch(pipeline, opts \\ []) do
+    Etl.Pipeline.add_batch(pipeline, opts)
+  end
+
   @spec run(Etl.Pipeline.t()) :: t
   def run(%Etl.Pipeline{} = pipeline) do
     Graph.new(type: :directed)
