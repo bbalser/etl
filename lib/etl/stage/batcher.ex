@@ -32,7 +32,7 @@ defmodule Etl.Stage.Batcher do
       end
 
     {outgoing, queue} =
-      case state.batch_size <= :queue.len(queue) do
+      case full_batch_available?(queue, state.batch_size) do
         false ->
           {[], queue}
 
@@ -50,6 +50,8 @@ defmodule Etl.Stage.Batcher do
 
     {:noreply, :queue.to_list(outgoing), %{state | queue: queue, timer: start_timer(state.batch_timeout)}}
   end
+
+  defp full_batch_available?(queue, batch_size), do: batch_size <= :queue.len(queue)
 
   defp start_timer(timeout) do
     :erlang.start_timer(timeout, self(), :go)

@@ -36,9 +36,6 @@ defmodule Etl.Support.BatchedConsumer do
     def handle_subscribe(_, _, _, state) do
       {:automatic, state}
     end
-
-    defp get_label(%{label: nil}), do: :batch
-    defp get_label(%{labe: label}), do: label
   end
 
   defimpl Etl.Stage do

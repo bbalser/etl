@@ -18,7 +18,8 @@ defmodule Etl.Message do
     %Etl.Message{message | data: update_function.(data)}
   end
 
-  def add_metadata(%__MODULE__{metadata: metadata} = message, key, term) do
+  @spec put_new_metadata(t, atom(), term()) :: t
+  def put_new_metadata(%__MODULE__{metadata: metadata} = message, key, term) do
     %Etl.Message{message | metadata: Map.put_new(metadata, key, term)}
   end
 

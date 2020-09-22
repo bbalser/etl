@@ -14,8 +14,8 @@ defmodule Etl.PartitionTest do
 
     hash = fn event ->
       case event.data do
-        x when x in [1, 2, 3] -> {Etl.Message.add_metadata(event, :partition, 0), 0}
-        _ -> {Etl.Message.add_metadata(event, :partition, 1), 1}
+        x when x in [1, 2, 3] -> {Etl.Message.put_new_metadata(event, :partition, 0), 0}
+        _ -> {Etl.Message.put_new_metadata(event, :partition, 1), 1}
       end
     end
 
@@ -44,8 +44,8 @@ defmodule Etl.PartitionTest do
 
     hash = fn event ->
       case rem(event.data, 2) do
-        0 -> {Etl.Message.add_metadata(event, :partition, :even), :even}
-        1 -> {Etl.Message.add_metadata(event, :partition, :odd), :odd}
+        0 -> {Etl.Message.put_new_metadata(event, :partition, :even), :even}
+        1 -> {Etl.Message.put_new_metadata(event, :partition, :odd), :odd}
       end
     end
 
@@ -77,8 +77,8 @@ defmodule Etl.PartitionTest do
       partitions: 2,
       hash: fn event ->
         case event.data do
-          x when x in [1, 2, 3] -> {Etl.Message.add_metadata(event, :partition, 0), 0}
-          _ -> {Etl.Message.add_metadata(event, :partition, 1), 1}
+          x when x in [1, 2, 3] -> {Etl.Message.put_new_metadata(event, :partition, 0), 0}
+          _ -> {Etl.Message.put_new_metadata(event, :partition, 1), 1}
         end
       end
     }
