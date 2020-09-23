@@ -1,21 +1,18 @@
-defmodule Etl.Support.ProducerConsumer do
-  defstruct []
+defmodule Etl.Support.BatchedConsumer do
+  defstruct [:pid, :label]
 
   defmodule Stage do
     use GenStage
-    require Logger
 
     def start_link(opts) do
       GenStage.start_link(__MODULE__, opts)
     end
 
-    def init(opts) do
-      {:producer_consumer, opts}
+    def init(t) do
+      {:consumer, t}
     end
 
     def handle_events(events, _from, state) do
-      Logger.debug(fn -> "#{inspect(__MODULE__)} Events: #{inspect(events)}" end)
-
       events =
         Enum.map(events, fn event ->
           Map.update!(event, :metadata, fn md ->
@@ -23,11 +20,17 @@ defmodule Etl.Support.ProducerConsumer do
           end)
         end)
 
-      {:noreply, events, state}
+      send(state.pid, {:batch_data, Enum.map(events, &Map.get(&1, :data))})
+      send(state.pid, {:batch_events, events})
+      {:noreply, [], state}
     end
 
-    def handle_subscribe(:producer, opts, _from, _state) do
-      {:automatic, Map.new(opts)}
+    def handle_subscribe(:producer, opts, _from, state) do
+      state =
+        Map.from_struct(state)
+        |> Map.merge(Map.new(opts))
+
+      {:automatic, state}
     end
 
     def handle_subscribe(_, _, _, state) do
@@ -36,8 +39,8 @@ defmodule Etl.Support.ProducerConsumer do
   end
 
   defimpl Etl.Stage do
-    def spec(_t, _context) do
-      {Stage, []}
+    def spec(t, _context) do
+      {Stage, t}
     end
   end
 end

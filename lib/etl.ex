@@ -26,15 +26,11 @@ defmodule Etl do
   end
 
   @spec to(Etl.Pipeline.t(), stage(), keyword()) :: Etl.Pipeline.t()
-  def to(pipeline, stage, opts \\ []) do
-    Etl.Pipeline.add_stage(pipeline, stage, opts)
-  end
+  defdelegate to(pipeline, stage, opts \\ []), to: Etl.Pipeline, as: :add_stage
 
   @spec function(Etl.Pipeline.t(), (Etl.Message.data() -> {:ok, Etl.Message.data()} | {:error, reason :: term()})) ::
           Etl.Pipeline.t()
-  def function(pipeline, fun) when is_function(fun, 1) do
-    Etl.Pipeline.add_function(pipeline, fun)
-  end
+  defdelegate function(pipeline, fun), to: Etl.Pipeline, as: :add_function
 
   @type partition_opts :: [
           partitions: pos_integer() | list(),
@@ -48,9 +44,10 @@ defmodule Etl do
   end
 
   @spec broadcast(Etl.Pipeline.t(), keyword) :: Etl.Pipeline.t()
-  def broadcast(pipeline, opts \\ []) do
-    Etl.Pipeline.set_broadcast(pipeline, opts)
-  end
+  defdelegate broadcast(pipeline, opts \\ []), to: Etl.Pipeline, as: :set_broadcast
+
+  @spec batch(Etl.Pipeline.t(), keyword) :: Etl.Pipeline.t()
+  defdelegate batch(pipeline, opts \\ []), to: Etl.Pipeline, as: :add_batch
 
   @spec run(Etl.Pipeline.t()) :: t
   def run(%Etl.Pipeline{} = pipeline) do

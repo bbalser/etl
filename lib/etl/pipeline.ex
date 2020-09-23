@@ -36,6 +36,14 @@ defmodule Etl.Pipeline do
     end)
   end
 
+  def add_batch(pipeline, opts) do
+    Map.update!(pipeline, :steps, fn steps ->
+      batcher = {Etl.Stage.Batcher, opts} |> to_child_spec(pipeline)
+      step = %Step{child_spec: batcher, opts: opts}
+      [step | steps]
+    end)
+  end
+
   def add_function(%{steps: [head | tail]} = pipeline, fun) do
     case head.child_spec do
       %{start: {Etl.Functions.Stage, _, [opts]}} ->

@@ -12,11 +12,17 @@ defmodule Etl.PartitionTest do
   test "etl can support simple number of partitions" do
     test = self()
 
+    hash = fn event ->
+      case event.data do
+        x when x in [1, 2, 3] -> {Etl.Message.put_new_metadata(event, :partition, 0), 0}
+        _ -> {Etl.Message.put_new_metadata(event, :partition, 1), 1}
+      end
+    end
+
     %{pids: [producer | _]} =
       etl =
       Etl.pipeline(%Etl.Support.Producer{pid: test}, dynamic_supervisor: @supervisor)
-      |> Etl.partition(partitions: 2)
-      |> Etl.to(%Etl.Support.PartitionTracker{})
+      |> Etl.partition(partitions: 2, hash: hash)
       |> Etl.function(fn x -> {:ok, x * 2} end)
       |> Etl.to(%Etl.Support.Consumer{pid: test})
       |> Etl.run()
@@ -26,14 +32,11 @@ defmodule Etl.PartitionTest do
 
     :ok = Etl.await(etl, delay: 100, timeout: 5_000)
 
-    partitions_used =
-      Enum.map(1..5, fn _ ->
-        assert_receive {:event, %Etl.Message{metadata: %{partition: p}}}, 2_000
-        p
-      end)
-      |> Enum.uniq()
-
-    assert 2 == Enum.count(partitions_used)
+    assert_receive {:event, %{data: 2, metadata: %{partition: 0}}} = event
+    assert_receive {:event, %{data: 4, metadata: %{partition: 0}}} = event
+    assert_receive {:event, %{data: 6, metadata: %{partition: 0}}} = event
+    assert_receive {:event, %{data: 8, metadata: %{partition: 1}}} = event
+    assert_receive {:event, %{data: 10, metadata: %{partition: 1}}} = event
   end
 
   test "etl can support custom partitions with hash function" do
@@ -41,8 +44,8 @@ defmodule Etl.PartitionTest do
 
     hash = fn event ->
       case rem(event.data, 2) do
-        0 -> {event, :even}
-        1 -> {event, :odd}
+        0 -> {Etl.Message.put_new_metadata(event, :partition, :even), :even}
+        1 -> {Etl.Message.put_new_metadata(event, :partition, :odd), :odd}
       end
     end
 
@@ -50,7 +53,6 @@ defmodule Etl.PartitionTest do
       etl =
       Etl.pipeline(%Etl.Support.Producer{pid: test}, dynamic_supervisor: @supervisor)
       |> Etl.partition(partitions: [:odd, :even], hash: hash)
-      |> Etl.to(%Etl.Support.PartitionTracker{})
       |> Etl.function(fn x -> {:ok, x * 2} end)
       |> Etl.to(%Etl.Support.Consumer{pid: test})
       |> Etl.run()
@@ -72,13 +74,18 @@ defmodule Etl.PartitionTest do
 
     producer = %Etl.Support.Producer{
       pid: test,
-      partitions: 2
+      partitions: 2,
+      hash: fn event ->
+        case event.data do
+          x when x in [1, 2, 3] -> {Etl.Message.put_new_metadata(event, :partition, 0), 0}
+          _ -> {Etl.Message.put_new_metadata(event, :partition, 1), 1}
+        end
+      end
     }
 
     %{pids: [producer | _]} =
       etl =
       Etl.pipeline(producer, dynamic_supervisor: @supervisor)
-      |> Etl.to(%Etl.Support.PartitionTracker{})
       |> Etl.function(fn x -> {:ok, x * 2} end)
       |> Etl.to(%Etl.Support.Consumer{pid: test})
       |> Etl.run()
@@ -88,13 +95,10 @@ defmodule Etl.PartitionTest do
 
     :ok = Etl.await(etl, delay: 100, timeout: 5_000)
 
-    partitions_used =
-      Enum.map(1..5, fn _ ->
-        assert_receive {:event, %Etl.Message{metadata: %{partition: p}}}, 2_000
-        p
-      end)
-      |> Enum.uniq()
-
-    assert 2 == Enum.count(partitions_used)
+    assert_receive {:event, %Etl.Message{data: 2, metadata: %{partition: 0}}}, 2_000
+    assert_receive {:event, %Etl.Message{data: 4, metadata: %{partition: 0}}}, 2_000
+    assert_receive {:event, %Etl.Message{data: 6, metadata: %{partition: 0}}}, 2_000
+    assert_receive {:event, %Etl.Message{data: 8, metadata: %{partition: 1}}}, 2_000
+    assert_receive {:event, %Etl.Message{data: 10, metadata: %{partition: 1}}}, 2_000
   end
 end
