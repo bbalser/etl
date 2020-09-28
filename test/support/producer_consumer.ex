@@ -1,33 +1,34 @@
 defmodule Etl.Support.ProducerConsumer do
-  defstruct []
+  defstruct [:name]
 
   defmodule Stage do
     use GenStage
     require Logger
 
     def start_link(opts) do
-      GenStage.start_link(__MODULE__, opts)
+      server_opts = Map.take(opts, [:name]) |> Enum.filter(& &1)
+      GenStage.start_link(__MODULE__, opts, Keyword.new(server_opts))
     end
 
     def init(opts) do
-      {:producer_consumer, opts}
+      {:producer_consumer, Map.from_struct(opts) |> Map.put(:type, :producer_consumer)}
     end
 
     def handle_events(events, _from, state) do
-      Logger.debug(fn -> "#{inspect(__MODULE__)} Events: #{inspect(events)}" end)
+      Enum.each(events, fn event ->
+        Logger.debug(fn -> "#{inspect(__MODULE__)}(#{state.name}): Event: #{event}" end)
+      end)
 
       events =
         Enum.map(events, fn event ->
-          Map.update!(event, :metadata, fn md ->
-            Map.put(md, __MODULE__, state)
-          end)
+          Etl.Message.put_new_metadata(event, self(), state)
         end)
 
       {:noreply, events, state}
     end
 
-    def handle_subscribe(:producer, opts, _from, _state) do
-      {:automatic, Map.new(opts)}
+    def handle_subscribe(:producer, opts, _from, state) do
+      {:automatic, Map.merge(state, Map.new(opts))}
     end
 
     def handle_subscribe(_, _, _, state) do
@@ -36,8 +37,8 @@ defmodule Etl.Support.ProducerConsumer do
   end
 
   defimpl Etl.Stage do
-    def spec(_t, _context) do
-      {Stage, []}
+    def spec(t, _context) do
+      {Stage, t}
     end
   end
 end

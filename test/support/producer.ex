@@ -43,6 +43,7 @@ defmodule Etl.Support.Producer do
         data: event,
         acknowledger: {Etl.TestAcknowledger, source, event}
       }
+      |> Etl.Message.put_new_metadata(self(), %{type: :producer})
     end
   end
 

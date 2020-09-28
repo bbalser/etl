@@ -27,4 +27,10 @@ defmodule Etl.Message do
   def mark_failed(message, reason) do
     %Etl.Message{message | status: {:error, reason}}
   end
+
+  defimpl String.Chars do
+    def to_string(message) do
+      "#{inspect(message.data)} - #{inspect(message.metadata)}"
+    end
+  end
 end

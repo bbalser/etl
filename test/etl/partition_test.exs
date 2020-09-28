@@ -20,17 +20,13 @@ defmodule Etl.PartitionTest do
     end
 
     %{pids: [producer | _]} =
-      etl =
-      Etl.pipeline(%Etl.Support.Producer{pid: test}, dynamic_supervisor: @supervisor)
+      Etl.producer(%Etl.Support.Producer{pid: test})
       |> Etl.partition(partitions: 2, hash: hash)
-      |> Etl.function(fn x -> {:ok, x * 2} end)
+      |> Etl.to(fn x -> {:ok, x * 2} end)
       |> Etl.to(%Etl.Support.Consumer{pid: test})
-      |> Etl.run()
+      |> Etl.run(dynamic_supervisor: @supervisor)
 
     Etl.Support.Producer.send_events(producer, [1, 2, 3, 4, 5])
-    Etl.Support.Producer.stop(producer)
-
-    :ok = Etl.await(etl, delay: 100, timeout: 5_000)
 
     assert_receive {:event, %{data: 2, metadata: %{partition: 0}}} = event
     assert_receive {:event, %{data: 4, metadata: %{partition: 0}}} = event
@@ -50,17 +46,13 @@ defmodule Etl.PartitionTest do
     end
 
     %{pids: [producer | _]} =
-      etl =
-      Etl.pipeline(%Etl.Support.Producer{pid: test}, dynamic_supervisor: @supervisor)
+      Etl.producer(%Etl.Support.Producer{pid: test})
       |> Etl.partition(partitions: [:odd, :even], hash: hash)
-      |> Etl.function(fn x -> {:ok, x * 2} end)
+      |> Etl.to(fn x -> {:ok, x * 2} end)
       |> Etl.to(%Etl.Support.Consumer{pid: test})
-      |> Etl.run()
+      |> Etl.run(dynamic_supervisor: @supervisor)
 
     Etl.Support.Producer.send_events(producer, [1, 2, 3, 4, 5])
-    Etl.Support.Producer.stop(producer)
-
-    :ok = Etl.await(etl, delay: 100, timeout: 5_000)
 
     assert_receive {:event, %Etl.Message{data: 2, metadata: %{partition: :odd}}}, 2_000
     assert_receive {:event, %Etl.Message{data: 4, metadata: %{partition: :even}}}, 2_000
@@ -84,16 +76,12 @@ defmodule Etl.PartitionTest do
     }
 
     %{pids: [producer | _]} =
-      etl =
-      Etl.pipeline(producer, dynamic_supervisor: @supervisor)
-      |> Etl.function(fn x -> {:ok, x * 2} end)
+      Etl.producer(producer)
+      |> Etl.to(fn x -> {:ok, x * 2} end)
       |> Etl.to(%Etl.Support.Consumer{pid: test})
-      |> Etl.run()
+      |> Etl.run(dynamic_supervisor: @supervisor)
 
     Etl.Support.Producer.send_events(producer, [1, 2, 3, 4, 5])
-    Etl.Support.Producer.stop(producer)
-
-    :ok = Etl.await(etl, delay: 100, timeout: 5_000)
 
     assert_receive {:event, %Etl.Message{data: 2, metadata: %{partition: 0}}}, 2_000
     assert_receive {:event, %Etl.Message{data: 4, metadata: %{partition: 0}}}, 2_000

@@ -45,9 +45,9 @@ defmodule EtlTest do
 
     %{pids: [producer | _]} =
       etl =
-      Etl.pipeline(%Etl.Support.Producer{pid: test}, dynamic_supervisor: @supervisor)
+      Etl.producer(%Etl.Support.Producer{pid: test})
       |> Etl.to(%Etl.Support.Consumer{pid: test})
-      |> Etl.run()
+      |> Etl.run(dynamic_supervisor: @supervisor)
 
     events = Enum.map(1..2, fn i -> "event-#{i}" end)
 
@@ -68,9 +68,9 @@ defmodule EtlTest do
 
     %{pids: [producer | _]} =
       etl =
-      Etl.pipeline({Etl.Support.Producer.Stage, %Etl.Support.Producer{pid: test}}, dynamic_supervisor: @supervisor)
+      Etl.producer({Etl.Support.Producer.Stage, %Etl.Support.Producer{pid: test}})
       |> Etl.to(%Etl.Support.Consumer{pid: test})
-      |> Etl.run()
+      |> Etl.run(dynamic_supervisor: @supervisor)
 
     events = Enum.map(1..2, fn i -> "event-#{i}" end)
 
@@ -91,13 +91,13 @@ defmodule EtlTest do
 
     %{pids: [producer | _]} =
       etl =
-      Etl.pipeline(%Etl.Support.Producer{pid: test}, dynamic_supervisor: @supervisor)
-      |> Etl.function(fn x -> ok(x * 2) end)
-      |> Etl.function(fn x -> ok(x + 1) end)
+      Etl.producer(%Etl.Support.Producer{pid: test})
+      |> Etl.to(fn x -> ok(x * 2) end)
+      |> Etl.to(fn event -> Etl.Message.update_data(event, fn x -> x + 1 end) |> ok() end, receive: :event)
       |> Etl.to(Etl.Test.Transform.Sum)
-      |> Etl.function(fn x -> ok(x - 1) end)
+      |> Etl.to(fn x -> ok(x - 1) end)
       |> Etl.to(%Etl.Support.Consumer{pid: test})
-      |> Etl.run()
+      |> Etl.run(dynamic_supervisor: @supervisor)
 
     Etl.Support.Producer.send_events(producer, [1, 2, 3, 4, 5])
     Etl.Support.Producer.send_events(producer, [6, 7, 8, 9, 10])
@@ -109,6 +109,86 @@ defmodule EtlTest do
     assert_receive {:ack, %{success: 1, fail: 0}}, 2_000
   end
 
+  test "etl can support parallelism" do
+    test = self()
+
+    %{pids: [producer | _]} =
+      Etl.producer(%Etl.Support.Producer{pid: test})
+      |> Etl.to(%Etl.Support.ProducerConsumer{}, count: 4)
+      |> Etl.to(%Etl.Support.Consumer{pid: test})
+      |> Etl.run(dynamic_supervisor: @supervisor, min_demand: 0, max_demand: 1)
+
+    Etl.Support.Producer.send_events(producer, [1, 2, 3, 4, 5])
+    Etl.Support.Producer.send_events(producer, [6, 7, 8, 9, 10])
+
+    events =
+      Enum.reduce(1..10, [], fn n, buffer ->
+        assert_receive {:event, %{data: ^n} = event}, 5_000
+        [event | buffer]
+      end)
+
+    assert 4 == count_stages_by_type(events, :producer_consumer)
+    assert 1 == count_stages_by_type(events, :consumer)
+  end
+
+  test "etl can support parallelism all the way to consumer" do
+    test = self()
+
+    %{pids: [producer | _]} =
+      Etl.producer(%Etl.Support.Producer{pid: test})
+      |> Etl.to(%Etl.Support.ProducerConsumer{}, count: 4)
+      |> Etl.to(%Etl.Support.Consumer{pid: test}, subscribe_strategy: :per_producer)
+      |> Etl.run(dynamic_supervisor: @supervisor, min_demand: 0, max_demand: 1)
+
+    Etl.Support.Producer.send_events(producer, [1, 2, 3, 4, 5])
+    Etl.Support.Producer.send_events(producer, [6, 7, 8, 9, 10])
+
+    events =
+      Enum.reduce(1..10, [], fn n, buffer ->
+        assert_receive {:event, %{data: ^n} = event}, 5_000
+        [event | buffer]
+      end)
+
+    assert 4 == count_stages_by_type(events, :producer_consumer)
+    assert 4 == count_stages_by_type(events, :consumer)
+  end
+
+  test "the tree widens" do
+    test = self()
+
+    %{pids: [producer | _]} =
+      Etl.producer(%Etl.Support.Producer{pid: test})
+      |> Etl.to(%Etl.Support.ProducerConsumer{}, count: 4)
+      |> Etl.to(%Etl.Support.Consumer{pid: test}, count: 4, subscribe_strategy: :per_producer)
+      |> Etl.run(dynamic_supervisor: @supervisor, min_demand: 0, max_demand: 1)
+
+    1..64
+    |> Enum.chunk_every(5)
+    |> Enum.each(fn events ->
+      Etl.Support.Producer.send_events(producer, events)
+    end)
+
+    events =
+      Enum.reduce(1..64, [], fn n, buffer ->
+        assert_receive {:event, %{data: ^n} = event}, 5_000
+        [event | buffer]
+      end)
+
+    assert 4 == count_stages_by_type(events, :producer_consumer)
+    assert 16 == count_stages_by_type(events, :consumer)
+  end
+
   defp status(i) when rem(i, 2) == 0, do: :ok
   defp status(_), do: {:error, "test"}
+
+  defp count_stages_by_type(events, filtered_type) do
+    events
+    |> Enum.map(fn %{metadata: metadata} ->
+      Enum.map(metadata, fn {pid, %{type: type}} -> {pid, type} end)
+      |> Enum.filter(fn {_, type} -> type == filtered_type end)
+    end)
+    |> List.flatten()
+    |> Enum.uniq()
+    |> Enum.count()
+  end
 end

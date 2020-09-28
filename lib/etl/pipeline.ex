@@ -29,6 +29,10 @@ defmodule Etl.Pipeline do
     }
   end
 
+  def get_context(pipeline, opts) do
+    Map.merge(pipeline.context, Map.new(opts))
+  end
+
   def add_stage(pipeline, stage, opts) do
     Map.update!(pipeline, :steps, fn steps ->
       step = %Step{child_spec: to_child_spec(stage, pipeline), opts: opts}
@@ -37,14 +41,31 @@ defmodule Etl.Pipeline do
   end
 
   def add_batch(pipeline, opts) do
-    Map.update!(pipeline, :steps, fn steps ->
+    pipeline
+    |> set_broadcast([])
+    |> Map.update!(:steps, fn steps ->
       batcher = {Etl.Stage.Batcher, opts} |> to_child_spec(pipeline)
       step = %Step{child_spec: batcher, opts: opts}
       [step | steps]
     end)
   end
 
-  def add_function(%{steps: [head | tail]} = pipeline, fun) do
+  def add_function(%{steps: [head | tail]} = pipeline, fun, opts) do
+    fun =
+      case Keyword.get(opts, :receive, :data) do
+        :event ->
+          fun
+
+        :data ->
+          fn event ->
+            case fun.(event.data) do
+              {:ok, new_data} -> {:ok, %{event | data: new_data}}
+              {:error, reason} -> {:error, reason}
+              new_data -> {:ok, %{event | data: new_data}}
+            end
+          end
+      end
+
     case head.child_spec do
       %{start: {Etl.Functions.Stage, _, [opts]}} ->
         opts =
