@@ -13,11 +13,11 @@ defmodule Etl.BatchTest do
     test = self()
 
     %{pids: [producer | _]} =
-      Etl.pipeline(%Etl.Support.Producer{pid: test}, dynamic_supervisor: @supervisor)
+      Etl.producer(%Etl.Support.Producer{pid: test})
       |> Etl.to(%Etl.Support.ProducerConsumer{})
       |> Etl.batch(batch_size: 3, batch_timeout: 1_000)
       |> Etl.to(%Etl.Support.BatchedConsumer{pid: test})
-      |> Etl.run()
+      |> Etl.run(dynamic_supervisor: @supervisor)
 
     Etl.Support.Producer.send_events(producer, [1, 2, 3, 4, 5])
     Etl.Support.Producer.send_events(producer, [6])
@@ -29,38 +29,79 @@ defmodule Etl.BatchTest do
     assert_receive {:batch_data, [10]}, 2000
   end
 
-  test "partion into batching" do
+  @tag skip: true
+  test "something" do
     test = self()
 
-    hash = fn event ->
-      case rem(event.data, 2) do
-        0 -> {Map.update!(event, :metadata, &Map.put(&1, :partition, :even)), :even}
-        1 -> {Map.update!(event, :metadata, &Map.put(&1, :partition, :odd)), :odd}
-      end
-    end
+    {:ok, producer} =
+      DynamicSupervisor.start_child(@supervisor, {Etl.Support.Producer.Stage, %Etl.Support.Producer{pid: test}})
 
-    %{pids: [producer | _]} =
-      Etl.pipeline(%Etl.Support.Producer{pid: test}, dynamic_supervisor: @supervisor)
-      |> Etl.to(%Etl.Support.ProducerConsumer{})
-      |> Etl.partition(partitions: [:even, :odd], hash: hash)
-      |> Etl.batch(batch_size: 3, batch_timeout: 1_000)
-      |> Etl.to(%Etl.Support.BatchedConsumer{pid: test})
-      |> Etl.run()
+    {:ok, pc1} =
+      DynamicSupervisor.start_child(
+        @supervisor,
+        {Etl.Support.ProducerConsumer.Stage, %Etl.Support.ProducerConsumer{name: :pc1}} |> intercept(dispatcher: GenStage.BroadcastDispatcher)
+      )
+
+    {:ok, pc2_1} =
+      DynamicSupervisor.start_child(
+        @supervisor,
+        {Etl.Support.ProducerConsumer.Stage, %Etl.Support.ProducerConsumer{name: :pc2_1}} |> intercept()
+      )
+
+    {:ok, pc2_2} =
+      DynamicSupervisor.start_child(
+        @supervisor,
+        {Etl.Support.ProducerConsumer.Stage, %Etl.Support.ProducerConsumer{name: :pc2_2}} |> intercept()
+      )
+
+    {:ok, consumer} =
+      DynamicSupervisor.start_child(@supervisor, {Etl.Support.Consumer.Stage, %Etl.Support.Consumer{pid: test}})
+
+    max_demand = 2
+    min_demand = 1
+
+    GenStage.sync_subscribe(consumer, to: pc2_1, min_demand: min_demand, max_demand: max_demand)
+    GenStage.sync_subscribe(consumer, to: pc2_2, min_demand: min_demand, max_demand: max_demand)
+
+    GenStage.sync_subscribe(pc2_1, to: pc1, min_demand: min_demand, max_demand: max_demand)
+    GenStage.sync_subscribe(pc2_2, to: pc1, min_demand: min_demand, max_demand: max_demand)
+
+    GenStage.sync_subscribe(pc1, to: producer, dispatcher: GenStage.BroadcastDispatcher)
 
     Etl.Support.Producer.send_events(producer, [1, 2, 3, 4, 5])
-    Etl.Support.Producer.send_events(producer, [6])
-    Etl.Support.Producer.send_events(producer, [7, 8, 9, 10])
 
-    assert_receive {:batch_events, [%{data: 1}, %{data: 3}, %{data: 5}] = events}, 1000
-    assert Enum.all?(events, fn event -> event.metadata.partition == :odd end)
+    Process.sleep(2_000)
 
-    assert_receive {:batch_events, [%{data: 2}, %{data: 4}, %{data: 6}] = events}, 1000
-    assert Enum.all?(events, fn event -> event.metadata.partition == :even end)
-
-    assert_receive {:batch_events, [%{data: 7}, %{data: 9}] = events}, 2000
-    assert Enum.all?(events, fn event -> event.metadata.partition == :odd end)
-
-    assert_receive {:batch_events, [%{data: 8}, %{data: 10}] = events}, 2000
-    assert Enum.all?(events, fn event -> event.metadata.partition == :even end)
+    Etl.Tree.print(producer)
   end
+
+  defp intercept({module, arg}, opts \\ []) do
+    {Etl.Stage.Interceptor,
+     Keyword.merge(opts,
+       stage: module,
+       args: arg
+     )}
+  end
+
+  # test "batching with multiple batch types" do
+  #   test = self()
+
+  #   %{pids: [producer | _]} =
+  #     Etl.producer(%Etl.Support.Producer{pid: test})
+  #     |> Etl.to(%Etl.Support.ProducerConsumer{})
+  #     |> Etl.batch(
+  #       even: fn data -> rem(data, 2) == 0 end,
+  #       odd: fn data -> rem(data, 2) == 1 end,
+  #       batch_timeout: 1_000
+  #     )
+  #     |> Etl.to(%Etl.Support.BatchedConsumer{pid: test})
+  #     |> Etl.run(dynamic_supervisor: @supervisor)
+
+  #   Etl.Support.Producer.send_events(producer, [1, 2, 3, 4, 5])
+  #   Etl.Support.Producer.send_events(producer, [6])
+  #   Etl.Support.Producer.send_events(producer, [7, 8, 9, 10])
+
+  #   assert_receive {:batch_events, [%{data: 1}, %{data: 3}, %{data: 5}, %{data: 7}, %{data: 9}]}, 1_200
+  #   assert_receive {:batch_events, [%{data: 2}, %{data: 4}, %{data: 6}, %{data: 8}, %{data: 10}]}, 1_200
+  # end
 end

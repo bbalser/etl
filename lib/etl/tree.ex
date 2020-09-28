@@ -20,15 +20,15 @@ defmodule Etl.Tree do
     add_to_graph(Graph.new(type: :directed), pid)
   end
 
-  def print(%Vertex{} = stage) do
-    stage
+  def print(%Graph{} = graph, %Vertex{} = producer) do
+    {graph, producer}
     |> List.wrap()
     |> Mix.Utils.print_tree(&format/1, format: "pretty")
   end
 
   def print(stages) do
-    {_graph, vertex} = discover(stages)
-    print(vertex)
+    {graph, vertex} = discover(stages)
+    print(graph, vertex)
   end
 
   defp add_to_graph(graph, pid) do
@@ -50,7 +50,9 @@ defmodule Etl.Tree do
       |> Enum.reduce(graph, fn next_pid, graph ->
         {graph, next_vertex} = add_to_graph(graph, next_pid)
         partition = Map.get(partitions, next_vertex.pid)
-        Graph.add_edge(graph, vertex, next_vertex, label: partition)
+        updated_next_vertex = %{next_vertex | partition: partition}
+        Graph.replace_vertex(graph, next_vertex, updated_next_vertex)
+        Graph.add_edge(graph, vertex, updated_next_vertex)
       end)
 
     {graph, vertex}
@@ -80,7 +82,7 @@ defmodule Etl.Tree do
     GenStage.Buffer.estimate_size(buffer)
   end
 
-  defp format(%Vertex{} = stage) do
+  defp format({%Graph{} = graph, %Vertex{} = stage}) do
     string =
       [
         format_type(stage.type),
@@ -96,7 +98,13 @@ defmodule Etl.Tree do
       |> IO.ANSI.format()
       |> IO.iodata_to_binary()
 
-    {{string, ""}, stage.subscribers}
+    subscribers =
+      Graph.out_edges(graph, stage)
+      |> Enum.map(fn edge ->
+        {graph, %{edge.v2 | partition: edge.label}}
+      end)
+
+    {{string, ""}, subscribers}
   end
 
   defp format_type(:producer) do

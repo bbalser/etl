@@ -16,10 +16,10 @@ defmodule Etl.Functions.Stage do
   def handle_events(events, _from, state) do
     transformed_events =
       events
-      |> Enum.reduce([], fn %Etl.Message{data: data} = event, buffer ->
-        case apply_functions(state, data) do
-          {:ok, value} ->
-            [%{event | data: value} | buffer]
+      |> Enum.reduce([], fn event, buffer ->
+        case apply_functions(state, event) do
+          {:ok, new_event} ->
+            [new_event | buffer]
 
           {:error, reason} ->
             state.context.error_handler.(event, reason)
@@ -32,8 +32,8 @@ defmodule Etl.Functions.Stage do
   end
 
   defp apply_functions(state, event) do
-    reduce_while_success(state.functions, event, fn fun, data ->
-      fun.(data)
+    reduce_while_success(state.functions, event, fn fun, event ->
+      fun.(event)
     end)
   end
 end

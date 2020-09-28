@@ -19,18 +19,22 @@ defmodule Etl do
           dynamic_supervisor: module()
         ]
 
-  @spec pipeline(stage(), global_opts()) :: Etl.Pipeline.t()
-  def pipeline(stage, opts \\ []) do
-    Etl.Pipeline.new(opts)
-    |> Etl.Pipeline.add_stage(stage, [])
+  @spec producer(stage(), keyword()) :: Etl.Pipeline.t()
+  def producer(stage, opts \\ []) do
+    Etl.Pipeline.new()
+    |> Etl.Pipeline.add_stage(stage, opts)
   end
 
   @spec to(Etl.Pipeline.t(), stage(), keyword()) :: Etl.Pipeline.t()
-  defdelegate to(pipeline, stage, opts \\ []), to: Etl.Pipeline, as: :add_stage
+  def to(pipeline, function, opts \\ [])
 
-  @spec function(Etl.Pipeline.t(), (Etl.Message.data() -> {:ok, Etl.Message.data()} | {:error, reason :: term()})) ::
-          Etl.Pipeline.t()
-  defdelegate function(pipeline, fun), to: Etl.Pipeline, as: :add_function
+  def to(pipeline, function, opts) when is_function(function) do
+    Etl.Pipeline.add_function(pipeline, function, opts)
+  end
+
+  def to(pipeline, stage, opts) do
+    Etl.Pipeline.add_stage(pipeline, stage, opts)
+  end
 
   @type partition_opts :: [
           partitions: pos_integer() | list(),
@@ -49,12 +53,18 @@ defmodule Etl do
   @spec batch(Etl.Pipeline.t(), keyword) :: Etl.Pipeline.t()
   defdelegate batch(pipeline, opts \\ []), to: Etl.Pipeline, as: :add_batch
 
-  @spec run(Etl.Pipeline.t()) :: t
-  def run(%Etl.Pipeline{} = pipeline) do
+  @spec run(Etl.Pipeline.t(), global_opts()) :: t
+  def run(%Etl.Pipeline{} = pipeline, global_opts \\ []) do
+    context = Etl.Pipeline.get_context(pipeline, global_opts)
+
     Graph.new(type: :directed)
-    |> start_steps(Etl.Pipeline.steps(pipeline), pipeline.context)
-    |> subscribe_stages(pipeline)
+    |> start_steps(Etl.Pipeline.steps(pipeline), context)
+    |> subscribe_stages(context)
     |> create_struct()
+    |> (fn etl ->
+          Etl.Tree.print(etl)
+          etl
+        end).()
   end
 
   @spec await(t) :: :ok | :timeout
@@ -81,46 +91,73 @@ defmodule Etl do
 
   defp start_steps(graph, [step | remaining], context) do
     starter = &start_step(&1, context, remaining == [])
+    tails = tails(graph)
+    subscribe_strategy = get_in(step.opts, [:subscribe_strategy]) || :mesh
+    dispatcher = get_dispatcher(tails)
 
-    case tails(graph) do
-      [] ->
-        {:ok, pid} = starter.(step)
-        Graph.add_vertex(graph, pid, step: step, subscription_opts: get_in(step.opts, [:subscription_opts]))
-
-      tails ->
-        Enum.reduce(tails, graph, fn tail, g ->
-          add_to_tail(g, step, tail, starter)
-        end)
-    end
+    graph
+    |> add_to_graph(tails, step, {subscribe_strategy, dispatcher}, starter)
     |> start_steps(remaining, context)
   end
 
-  defp add_to_tail(graph, step, tail, starter) do
+  defp add_to_graph(graph, tails, step, {:mesh, {:partitions, partitions}}, starter) do
     subscription_opts = get_in(step.opts, [:subscription_opts]) || []
 
+    Enum.reduce(partitions, graph, fn partition, g ->
+      {:ok, pid} = starter.(step)
+
+      subscription_opts = Keyword.put(subscription_opts, :partition, partition)
+      g = Graph.add_vertex(g, pid, step: step, subscription_opts: subscription_opts)
+
+      Enum.reduce(tails, g, fn tail, g ->
+        Graph.add_edge(g, tail, pid)
+      end)
+    end)
+  end
+
+  defp add_to_graph(graph, tails, step, {:mesh, _}, starter) do
+    subscription_opts = get_in(step.opts, [:subscription_opts]) || []
+    count = get_in(step.opts, [:count]) || 1
+
+    Enum.reduce(1..count, graph, fn _, g ->
+      {:ok, pid} = starter.(step)
+
+      g = Graph.add_vertex(g, pid, step: step, subscription_opts: subscription_opts)
+
+      Enum.reduce(tails, g, fn tail, g ->
+        Graph.add_edge(g, tail, pid)
+      end)
+    end)
+  end
+
+  defp add_to_graph(graph, tails, step, {:per_producer, _}, starter) do
+    subscription_opts = get_in(step.opts, [:subscription_opts]) || []
+    count = get_in(step.opts, [:count]) || 1
+
+    Enum.reduce(tails, graph, fn tail, g ->
+      Enum.reduce(1..count, g, fn _, g ->
+        {:ok, pid} = starter.(step)
+
+        Graph.add_vertex(g, pid, step: step, subscription_opts: subscription_opts)
+        |> Graph.add_edge(tail, pid)
+      end)
+    end)
+  end
+
+  defp get_dispatcher([]), do: :default
+
+  defp get_dispatcher([tail | _]) do
     case GenStage.call(tail, :"$dispatcher") do
       {GenStage.PartitionDispatcher, opts} ->
         partitions = Keyword.fetch!(opts, :partitions) |> to_list()
-
-        partitions
-        |> Enum.reduce(graph, fn partition, g ->
-          subscription_opts = Keyword.put(subscription_opts, :partition, partition)
-
-          {:ok, pid} = starter.(step)
-          add_step_to_graph(g, pid, tail, step: step, subscription_opts: subscription_opts)
-        end)
+        {:partitions, partitions}
 
       _ ->
-        count = get_in(step.opts, [:count]) || 1
-
-        Enum.reduce(1..count, graph, fn _, g ->
-          {:ok, pid} = starter.(step)
-          add_step_to_graph(g, pid, tail, step: step, subscription_opts: subscription_opts)
-        end)
+        :default
     end
   end
 
-  defp subscribe_stages(graph, pipeline) do
+  defp subscribe_stages(graph, context) do
     Graph.postorder(graph)
     |> Enum.reduce(graph, fn pid, g ->
       v_subscription_opts = Graph.vertex_labels(g, pid) |> Keyword.get(:subscription_opts, [])
@@ -130,8 +167,8 @@ defmodule Etl do
         subscription_opts =
           [
             to: neighbor,
-            min_demand: pipeline.context.min_demand,
-            max_demand: pipeline.context.max_demand
+            min_demand: context.min_demand,
+            max_demand: context.max_demand
           ]
           |> Keyword.merge(v_subscription_opts)
 
@@ -198,12 +235,6 @@ defmodule Etl do
 
   defp to_list(list) when is_list(list), do: list
   defp to_list(integer) when is_integer(integer), do: 0..(integer - 1)
-
-  defp add_step_to_graph(graph, vertex, from, labels) do
-    graph
-    |> Graph.add_vertex(vertex, labels)
-    |> Graph.add_edge(from, vertex)
-  end
 
   defp start_step(step, context, last_step) do
     interceptor_opts =
